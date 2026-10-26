@@ -48,7 +48,14 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 - [~] Kariyer hedef çipi (yarış sırasında), menüde 1-4 tuşları ile mod seçimi, "Kapat" yerine "Hızlı başla"
 - [x] Hız birimi km/s → km/sa
 
-## 🏁 2. Yeni oyun modları
+## ⚡ Tur A — Oyun hissi
+- [~] **Telsiz uyarıları:** sana kilitlenen roket, önündeki rakip yağı/mayını, arkadan hızla yaklaşan rakip, eleme sayacında sonunculuk (sayaç da kırmızı yanıp söner), silahsızken öndeki kılıç plakası, yakındaki Dreadnought. Roket ve öndeki tuzak için yön oklu tehdit göstergesi.
+- [~] **Takedown çeşitleri:** Çarpışma (x1), Duvara sıkıştırma (x1.5), Takla (x1.4), Minigun (x0.8), Roket (x1), Mayın (x1.3), Yağ kaydırması (x1.6), Alev (x1.2), Tuzak (x1.5), Pres ezmesi (x2), Hava saldırısı (x0.8), Jant bıçağı (x1.5). Sonuç ekranında takedown türleri.
+- [x] Rakibin kendi kazası, başka rakibin ateşi ve eleme artık oyuncuya takedown/puan olarak yazılmıyor (önceden yazılıyordu)
+- [~] **Hava durumu sürüşü etkiler:** yağmurda tutuş −%22 (rakipler de), gecede görüş 420 m, dumanlı gün batımında tutuş −%5 ve görüş 900 m; HUD'da hava çipi.
+- [~] Fizik NaN koruması (bozulan araç son sağlam konumuna döner)
+
+## 🏁 2. Yeni oyun modları (şimdilik atlandı)
 - [ ] Zamana karşı (rakipsiz, hayaletle, tur rekoru)
 - [ ] Hayatta kalma (tur yok, son araç kalana kadar)
 - [ ] Takedown arenası (3 dk, rakipler yeniden doğar)

@@ -400,3 +400,9 @@
 - **R** (`respawnPlayer`): yalnızca oyuncu; sağlamsa `recoverCar`, imha olduysa tam can + parçalar yerinde. `resetCar` artık tuşa bağlı değil.
 - **Geri sayım** (`raceCountdown`, `updateCountdown`): ilk başlangıçta 3-2-1-BAŞLA; araçlar frende, eleme ve tur süresi bekler.
 - **UI:** silah yuvaları (`updateWeaponsHUD`, kilit/boş/bekleme/hazır + sayı; 1500 px altında isimler gizli), duyuru sırası (`bannerQueue`), sonuç/kaçış ekranı düğmeleri (`pauseAction('restart'|'menu')`), kariyer hedef çipi (`#career-goal`), mod menüsünde 1-4 tuşları, "Kapat" → "Hızlı başla", km/s → km/sa.
+
+## [Feature] Tur A: Telsiz Uyarıları, Takedown Çeşitleri, Hava Etkisi
+- **Uyarılar** (`updateThreats`, 10 Hz; `caseWarn(key, text, cooldown)`): kilitlenen roket, öndeki rakip yağı/mayını (70 m, ±7 m), arkadan yaklaşan rakip, eleme sonunculuğu (`#elimination-hud.danger`), silahsızken öndeki kılıç plakası, Dreadnought. `#threat-hud` yön oku `relativeBearing()` ile (0° ileri).
+- **Takedown** (`TAKEDOWN_TYPES`, `resolveTakedownType`): `applyAIDamage(ai, dmg, pt, norm, source)` — kaynaklar: ram, wall, flip, gun, rocket, mine, oil, fire, trap, crusher, airstrike, blades; oyuncu dışı: crash, ai, elimination, misc (ödül/kombo/kelle avı yok, izleyici puanı yok). AI çarpışma dinleyicisi: oyuncuya çarpma = ram, oyuncu son 2.5 sn'de vurduysa wall. Takla: araç ters (up.y < 0.3). Ödül 65.000 x çarpan. `raceStats.takedownTypes` sonuç ekranında.
+- **Hava** (`WEATHER_FX`, `weatherGrip()`): tutuş çarpanı oyuncu ve AI frictionSlip'e; sis near/far; `#weather-chip`.
+- **NaN koruması** (`guardPhysicsNaN`): her fizik adımından sonra oyuncu ve AI için son sağlam konum.

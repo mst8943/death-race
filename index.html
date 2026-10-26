@@ -1075,6 +1075,18 @@
     #rivals-hud{transform:scale(0.92);transform-origin:top right}
   }
 
+  /* Hava durumu çipi */
+  #weather-chip{display:none;margin-top:4px;margin-left:4px;font-size:10px;font-weight:900;letter-spacing:1px;color:#bfe3ff;background:rgba(20,40,70,0.75);border:1px solid #3a7bd5;border-radius:4px;padding:2px 8px}
+
+  /* Tehdit göstergesi (roket / öndeki tuzak) */
+  #threat-hud{position:fixed;left:50%;top:66%;transform:translateX(-50%);display:none;align-items:center;gap:8px;padding:5px 14px 5px 8px;border-radius:18px;font-size:13px;font-weight:900;letter-spacing:1px;color:#fff;pointer-events:none;z-index:96;text-shadow:0 1px 3px #000}
+  #threat-hud.show{display:flex}
+  #threat-hud.rocket{background:rgba(192,57,43,0.85);border:1.5px solid #ff6b5b;animation:threat-pulse 0.5s infinite alternate}
+  #threat-hud.hazard{background:rgba(150,100,10,0.85);border:1.5px solid #ffcc44}
+  #threat-arrow{display:inline-block;font-size:16px;transition:transform 0.1s linear}
+  @keyframes threat-pulse{from{box-shadow:0 0 6px rgba(255,60,40,0.4)}to{box-shadow:0 0 22px rgba(255,60,40,0.9)}}
+  #elimination-hud.danger{animation:threat-pulse 0.4s infinite alternate;background:rgba(220,20,20,0.95)}
+
   /* Geri sayım */
   #countdown{position:fixed;top:38%;left:50%;transform:translate(-50%,-50%) scale(0.6);font-size:120px;font-weight:900;color:#ffcc44;text-shadow:0 0 40px rgba(255,180,0,0.6),0 6px 20px #000;opacity:0;pointer-events:none;z-index:130;transition:opacity 0.15s,transform 0.25s}
   #countdown.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
@@ -1166,6 +1178,7 @@
   <div id="lap-display">TUR <span id="lap-num">1</span> / <span id="lap-total">3</span></div>
   <div id="stage-display" class="stage-tag stage-1">ETAP 1: SAF SÜRÜŞ & RAMMING (SİLAHLAR KİLİTLİ)</div>
   <div id="career-goal"></div>
+  <div id="weather-chip"></div>
   <div id="time-display"><span id="lap-time">00:00.0</span> &middot; <small>EN İYİ: <span id="best-time">--:--.-</span></small></div>
 </div>
 
@@ -1378,6 +1391,7 @@
     <div id="post-race-career" style="display:none;margin:10px 0 4px;font-weight:900;font-size:13px;color:#e0b0ff;letter-spacing:0.5px"></div>
     
     <div class="stats-grid">
+      <div class="stat-item" style="grid-column:1/-1"><span class="stat-label">TAKEDOWN TÜRLERİ:</span><span class="stat-val" id="stat-td-types" style="font-size:12px;text-align:right">—</span></div>
       <div class="stat-item"><span class="stat-label">FİNİŞ SIRASI:</span><span class="stat-val" id="stat-rank">-</span></div>
       <div class="stat-item"><span class="stat-label">TOPLAM TAKEDOWN:</span><span class="stat-val" id="stat-takedowns">0</span></div>
       <div class="stat-item"><span class="stat-label">EN YÜKSEK HIZ:</span><span class="stat-val" id="stat-max-speed">0 km/sa</span></div>
@@ -1410,6 +1424,7 @@
 </div>
 
 <div id="countdown"></div>
+<div id="threat-hud"><span id="threat-arrow">▲</span><span id="threat-text"></span></div>
 <div id="pause-menu" role="dialog" aria-modal="true" aria-label="Duraklatma menüsü">
   <div class="pause-card">
     <div class="pause-title"><span class="pause-icon"></span>DURAKLATILDI</div>

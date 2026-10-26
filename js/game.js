@@ -17,6 +17,7 @@ const buffBoxEl = document.getElementById('buff-box');
 const radioBoxEl = document.getElementById('radio-box');
 const radioTextEl = document.getElementById('radio-text');
 let eliminationTimerEl = document.getElementById('elimination-timer');
+const eliminationHudEl = document.getElementById('elimination-hud');
 
 // Reyting & Liderlik Tablosu DOM Elementleri
 const viewersValEl = document.getElementById('viewers-val');
@@ -1259,8 +1260,22 @@ rainPoints.frustumCulled = false; // konumlar her karede oyuncunun etrafında ye
 scene.add(rainPoints);
 rainPoints.visible = false;
 
+// Hava durumunun sürüşe etkisi: tutuş çarpanı ve görüş mesafesi (sis)
+const WEATHER_FX = {
+ 0: { grip: 1.0, fogNear: 150, fogFar: 1300, chip: '' },
+ 1: { grip: 0.78, fogNear: 90, fogFar: 700, chip: '🌧 ISLAK ZEMİN · TUTUŞ −%22' },
+ 2: { grip: 1.0, fogNear: 40, fogFar: 420, chip: '🌙 GECE · GÖRÜŞ KISITLI' },
+ 3: { grip: 0.95, fogNear: 120, fogFar: 900, chip: '🌆 DUMANLI · TUTUŞ −%5' }
+};
+function weatherGrip() { return (WEATHER_FX[weatherMode] || WEATHER_FX[0]).grip; }
+
 function setWeather(mode) {
  weatherMode = mode;
+ const wfx = WEATHER_FX[mode] || WEATHER_FX[0];
+ scene.fog.near = wfx.fogNear;
+ scene.fog.far = wfx.fogFar;
+ const chip = document.getElementById('weather-chip');
+ if (chip) { chip.textContent = wfx.chip; chip.style.display = wfx.chip ? 'inline-block' : 'none'; }
  if (mode === 0) {
   // Gündüz
   scene.background.set('#0e1014');
@@ -1941,7 +1956,7 @@ function updateHangarCrushers(dt) {
      const aPos = ai.chassisBody.position;
      const distToAI = Math.hypot(aPos.x - c.pos.x, aPos.z - c.pos.z);
      if (distToAI < 5.0 && aPos.y < 2.5) {
-      applyAIDamage(ai, 50, aPos, new T.Vector3(0, 1, 0));
+      applyAIDamage(ai, 50, aPos, new T.Vector3(0, 1, 0), 'crusher');
       showBanner(`${ai.name} HİDROLİK PRESE YAKALANDI!`, 'buff-sword');
       showRadioMessage(`${ai.name} presin altında kaldı, ezildi!`, 'hennessey', 'Racer crushed by the hydraulic press!');
      }
@@ -2152,7 +2167,7 @@ function createContainerCrane() {
     }
     for (let ai of aiOpponents) {
      if (!ai.isDead && ai.chassisBody.position.vsub(cBody.position).length() < 6.5) {
-      applyAIDamage(ai, 85, ai.chassisBody.position, new T.Vector3(0, 1, 0));
+      applyAIDamage(ai, 85, ai.chassisBody.position, new T.Vector3(0, 1, 0), 'trap');
      }
     }
    }, 700);
@@ -3757,7 +3772,7 @@ chassisBody.addEventListener('collide', e => {
  const ramImpact = Math.abs(relVel);
  if (otherBody && otherBody.targetData && otherBody.targetData.onHit) {
   const ramMult = (customization.bumperKit === 'ram_plow' ? 3.0 : (customization.bumperKit === 'reinforced_grate' ? 2.0 : 1.3)) * (detachedParts.has('part_spikes') ? 0.6 : 1);
-  otherBody.targetData.onHit(ramImpact * 12 * ramMult);
+  otherBody.targetData.onHit(ramImpact * 12 * ramMult, null, null, 'ram');
  }
 
  const dmgReduction = (customization.bumperKit === 'ram_plow' ? 0.35 : (customization.bumperKit === 'reinforced_grate' ? 0.6 : 1.0));
@@ -4390,7 +4405,7 @@ function createAIOpponent(cfg) {
 
  cBody.targetData = {
   type: 'ai', ai,
-  onHit: (dmg, hitPt, hitNorm) => { applyAIDamage(ai, dmg, hitPt, hitNorm); }
+  onHit: (dmg, hitPt, hitNorm, source) => { applyAIDamage(ai, dmg, hitPt, hitNorm, source || 'misc'); }
  };
 
  let lastAIImpact = 0;
@@ -4405,7 +4420,12 @@ function createAIOpponent(cfg) {
   const cp = e.contact.bi === cBody ? e.contact.ri : e.contact.rj;
   const worldPt = new CANNON.Vec3();
   cBody.pointToWorldFrame(cp, worldPt);
-  applyAIDamage(ai, dmg, worldPt, new T.Vector3(0, 1, 0));
+  // Çarpışma kaynağı: oyuncuya çarpma = ram; oyuncu son 2.5 sn'de vurduysa duvara/engele sıkıştırma; yoksa kendi kazası
+  const other = e.contact.bi === cBody ? e.contact.bj : e.contact.bi;
+  let src = 'crash';
+  if (other === chassisBody) { src = 'ram'; ai.lastPlayerHitTime = now; }
+  else if (now - (ai.lastPlayerHitTime || -1e9) < 2500) src = 'wall';
+  applyAIDamage(ai, dmg, worldPt, new T.Vector3(0, 1, 0), src);
  });
 
  aiOpponents.push(ai);
@@ -4414,7 +4434,7 @@ function createAIOpponent(cfg) {
 
 for (const cfg of AI_CONFIGS) createAIOpponent(cfg);
 
-function detachAIPart(ai, partKey, customImpulse = null) {
+function detachAIPart(ai, partKey, customImpulse = null, quiet = false) {
  if (ai.detachedParts.has(partKey) || !ai.carBodyMesh) return;
  const mesh = ai.carBodyMesh.getObjectByName(partKey);
  if (!mesh) return;
@@ -4454,7 +4474,7 @@ function detachAIPart(ai, partKey, customImpulse = null) {
  debrisList.push({ mesh: debrisMesh, body: debrisBody, life: 16 });
  spawnSparks(worldPos, new T.Vector3(0, 1, 0), 20);
  Snd.playMetalSnap();
- addViewers(150000, `${ai.name}'İN ${cfg.name.toUpperCase()} KOPTU!`);
+ if (!quiet) addViewers(150000, `${ai.name}'İN ${cfg.name.toUpperCase()} KOPTU!`);
 }
 
 
@@ -4508,7 +4528,7 @@ function triggerRivalTaunt(ai, eventType = 'attack') {
 }
 window.triggerRivalTaunt = triggerRivalTaunt;
 
-function triggerTakedown(victimAI) {
+function triggerTakedown(victimAI, td = TAKEDOWN_TYPES.ram) {
  // ANA KAMERA ASLA OYUNCUDAN AYRILMAZ! Oyuncu tam kontrolde ve tam hızda kalır.
  takedownVictimAI = victimAI;
  takedownPipActive = true;
@@ -4517,7 +4537,7 @@ function triggerTakedown(victimAI) {
  const pipContainer = document.getElementById('takedown-pip-container');
  const pipTitle = document.getElementById('pip-victim-title');
  if (pipContainer) pipContainer.classList.add('active');
- if (pipTitle) pipTitle.textContent = `${victimAI.name.toUpperCase()} İMHA EDİLDİ!`;
+ if (pipTitle) pipTitle.textContent = `${td.name}: ${victimAI.name.toUpperCase()}`;
 
  // Rakip araca sinematik takla ve fırlama darbesi uygula
  victimAI.chassisBody.velocity.y += 6.8;
@@ -4530,10 +4550,13 @@ function triggerTakedown(victimAI) {
 
  nitroAmount = 100;
  Snd.playTakedownSting();
- addViewers(2000000, '★ BURNOUT TAKEDOWN: ' + victimAI.name + ' ★');
- playerCredits += 65000;
+ const tdReward = Math.round(65000 * td.mul);
+ addViewers(Math.round(2000000 * td.mul));
+ playerCredits += tdReward;
+ const pipPts = document.querySelector('#takedown-pip-container .pip-pts');
+ if (pipPts) pipPts.textContent = `+${fmtTR(tdReward)} PTS`;
  if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
- showBanner('☠ BURNOUT TAKEDOWN! ' + victimAI.name + ' PARÇALANDI!', 'buff-sword');
+ showBanner(`☠ ${td.name}! ${victimAI.name} PARÇALANDI! (x${td.mul})`, 'buff-sword');
 
  const lastWords = {
   ai0: "Hennessey beni aldattı... lanet olsun!",
@@ -4551,8 +4574,39 @@ function triggerTakedown(victimAI) {
  }
 }
 
-function applyAIDamage(ai, dmg, hitPt = null, hitNorm = null) {
+/* ---------- Takedown çeşitleri ----------
+   Rakibin ölüm anındaki hasar kaynağına göre takedown adı ve ödül çarpanı belirlenir.
+   Kendi kazası, başka rakibin ateşi ve eleme sayacı artık oyuncuya takedown olarak yazılmaz. */
+const TAKEDOWN_TYPES = {
+ ram: { name: 'ÇARPIŞMA TAKEDOWN', mul: 1.0 },
+ wall: { name: 'DUVARA SIKIŞTIRMA', mul: 1.5 },
+ flip: { name: 'TAKLA TAKEDOWN', mul: 1.4 },
+ gun: { name: 'MİNİGUN İNFAZI', mul: 0.8 },
+ rocket: { name: 'ROKET İSABETİ', mul: 1.0 },
+ mine: { name: 'MAYIN TUZAĞI', mul: 1.3 },
+ oil: { name: 'YAĞ KAYDIRMASI', mul: 1.6 },
+ fire: { name: 'ALEVLER İÇİNDE', mul: 1.2 },
+ trap: { name: 'TUZAK TAKEDOWN', mul: 1.5 },
+ crusher: { name: 'PRES EZMESİ', mul: 2.0 },
+ airstrike: { name: 'HAVA SALDIRISI', mul: 0.8 },
+ blades: { name: 'JANT BIÇAĞI', mul: 1.5 }
+};
+const NON_PLAYER_DEATHS = { crash: 'KAZA YAPTI', ai: 'RAKİP ATEŞİYLE DÜŞTÜ', elimination: 'ELENDİ', misc: 'İMHA OLDU' };
+const _aiUp = new T.Vector3();
+function resolveTakedownType(ai, source) {
+ _aiUp.set(0, 1, 0).applyQuaternion(ai.meshGroup.quaternion);
+ const flipped = _aiUp.y < 0.3;
+ const playerRecent = performance.now() - (ai.lastPlayerHitTime || -1e9) < 3000;
+ if (source === 'elimination' || source === 'ai') return source;
+ if (ai.oilSpinTimer > 0 && ai.oilByPlayer && (source === 'crash' || source === 'misc' || source === 'wall')) return 'oil';
+ if (source === 'crash' || source === 'misc') return playerRecent ? (flipped ? 'flip' : 'wall') : 'crash';
+ if ((source === 'ram' || source === 'wall') && flipped) return 'flip';
+ return source;
+}
+
+function applyAIDamage(ai, dmg, hitPt = null, hitNorm = null, source = 'misc') {
  if (ai.isDead) return;
+ if (TAKEDOWN_TYPES[source]) ai.lastPlayerHitTime = performance.now();
 
  if (ai.shieldTimer > 0) {
   if (hitPt) spawnSparks(new T.Vector3(hitPt.x, hitPt.y, hitPt.z), new T.Vector3(0, 1, 0), 12);
@@ -4572,22 +4626,37 @@ function applyAIDamage(ai, dmg, hitPt = null, hitNorm = null) {
  }
 
  Snd.playCrash(dmg / 35);
- addViewers(Math.round(dmg * 800));
+ const byPlayer = !!TAKEDOWN_TYPES[source];
+ // İzleyici/puan yalnızca oyuncunun verdiği hasar için (kaza, rakip ateşi ve eleme puan getirmez)
+ if (byPlayer) addViewers(Math.round(Math.min(dmg, 100) * 800));
 
  if (hitPt) {
   const norm = hitNorm || new T.Vector3(0, 1, 0);
   spawnSparks(new T.Vector3(hitPt.x, hitPt.y, hitPt.z), norm, 12);
  }
 
- if (ai.health <= 80) detachAIPart(ai, 'part_spikes');
- if (ai.health <= 60) detachAIPart(ai, 'part_armor_l');
- if (ai.health <= 40) detachAIPart(ai, 'part_armor_r');
- if (ai.health <= 25) detachAIPart(ai, 'part_roof');
+ if (ai.health <= 80) detachAIPart(ai, 'part_spikes', null, !byPlayer);
+ if (ai.health <= 60) detachAIPart(ai, 'part_armor_l', null, !byPlayer);
+ if (ai.health <= 40) detachAIPart(ai, 'part_armor_r', null, !byPlayer);
+ if (ai.health <= 25) detachAIPart(ai, 'part_roof', null, !byPlayer);
 
  if (ai.health <= 0) {
   ai.isDead = true;
-   detachAIPart(ai, 'part_tombstone');
-   triggerTakedown(ai);
+  const tdType = resolveTakedownType(ai, source);
+  const td = TAKEDOWN_TYPES[tdType];
+  ai.deathType = tdType;
+   detachAIPart(ai, 'part_tombstone', null, true);
+  if (!td) {
+   // Oyuncunun payı olmayan ölüm: takedown ödülü / kombo / kelle avı yok
+   createExplosion(ai.chassisBody.position, 12, 4500);
+   for (let key of Object.keys(MODULAR_PARTS)) detachAIPart(ai, key, null, true);
+   for (let i = 0; i < 4; i++) { ai.vehicle.applyEngineForce(0, i); ai.vehicle.setBrake(60, i); }
+   showBanner(`${ai.name} ${NON_PLAYER_DEATHS[tdType] || 'İMHA OLDU'}!`, 'buff-sword');
+   return;
+  }
+  raceStats.takedownTypes = raceStats.takedownTypes || {};
+  raceStats.takedownTypes[tdType] = (raceStats.takedownTypes[tdType] || 0) + 1;
+   triggerTakedown(ai, td);
    registerKillCombo();
    if (bountyTargetAI && bountyTargetAI.id === ai.id) {
     bountyTargetAI = null;
@@ -4598,7 +4667,7 @@ function applyAIDamage(ai, dmg, hitPt = null, hitNorm = null) {
     showRadioMessage('Kelle avı ödülünü kaptık Frankenstein! 100.000 Puan hesapta!', 'case');
    }
   createExplosion(ai.chassisBody.position, 12, 4500);
-  for (let key of Object.keys(MODULAR_PARTS)) detachAIPart(ai, key);
+  for (let key of Object.keys(MODULAR_PARTS)) detachAIPart(ai, key, null, true);
 
   for (let i = 0; i < 4; i++) {
    ai.vehicle.applyEngineForce(0, i);
@@ -4608,9 +4677,8 @@ function applyAIDamage(ai, dmg, hitPt = null, hitNorm = null) {
   timeScale = 0.32;
   setTimeout(() => { timeScale = 1.0; }, 1200);
 
-  addViewers(1500000, `★ ${ai.name} İMHA EDİLDİ! ★`);
-  showBanner(`${ai.name} İMHA EDİLDİ! (WRECKED)`, 'buff-sword');
-  showRadioMessage(`Mükemmel atış! ${ai.name} alevler içinde yarış dışı kaldı!`);
+  addViewers(1500000);
+  showRadioMessage(`${td.name}! ${ai.name} yarış dışı kaldı!`);
  }
 }
 
@@ -4679,6 +4747,7 @@ function updateAIOpponents(dt) {
    const dz = aiPos.z - oil.pos.z;
    if (Math.sqrt(dx * dx + dz * dz) < oil.radius && ai.oilSpinTimer <= 0) {
     ai.oilSpinTimer = 2.5;
+    ai.oilByPlayer = !oil.owner;
     ai.chassisBody.angularVelocity.y += (Math.random() < 0.5 ? 6 : -6);
     showBanner(`${ai.name} MOTOR YAĞINA BASTI VE SAVRULUYOR!`, 'buff-sword');
     addViewers(45000);
@@ -4701,7 +4770,7 @@ function updateAIOpponents(dt) {
    for (let i = 0; i < 4; i++) ai.vehicle.wheelInfos[i].frictionSlip = 0.15;
    continue;
   } else {
-   for (let i = 0; i < 4; i++) ai.vehicle.wheelInfos[i].frictionSlip = 2.6;
+   for (let i = 0; i < 4; i++) ai.vehicle.wheelInfos[i].frictionSlip = 2.6 * weatherGrip();
   }
 
   if (ai.flatTireTimer > 0) {
@@ -4713,7 +4782,7 @@ function updateAIOpponents(dt) {
   if (ai.burnTimer > 0) {
    ai.burnTimer -= dt;
    ai.burnTick = (ai.burnTick || 0) + dt;
-   if (ai.burnTick >= 0.5) { ai.burnTick = 0; applyAIDamage(ai, 3); }
+   if (ai.burnTick >= 0.5) { ai.burnTick = 0; applyAIDamage(ai, 3, null, null, 'fire'); }
    if (Math.random() < 0.35) spawnSparks(aiPos, _upNormalAI, 3);
    if (ai.isDead) continue;
   }
@@ -4778,7 +4847,7 @@ function updateAIOpponents(dt) {
   if (ai.isNemesis) targetSpeedMs *= 1.15; // Nemesis daha hızlı takip eder!
   if (ai.flatTireTimer > 0) targetSpeedMs *= 0.6;
   if (ai.acidTimer > 0) targetSpeedMs *= 0.65;
-  targetSpeedMs *= diffCfg().speed * healthSpeedFactor(ai.health, 100);
+  targetSpeedMs *= diffCfg().speed * healthSpeedFactor(ai.health, 100) * (weatherMode === 1 ? 0.94 : 1);
 
   if (speed < targetSpeedMs) {
    const forcePct = Math.max(0, 1 - speed / targetSpeedMs);
@@ -5679,10 +5748,11 @@ function updateControls(dt) {
   for (let i = 0; i < 4; i++) vehicle.wheelInfos[i].frictionSlip = 0.3;
  } else if (isDrifting) {
   // Drift esnasında abartılı savrulmayan, yön verilebilir kontrollü drift sürtünmesi (1.85)
-  vehicle.wheelInfos[0].frictionSlip = 3.8;
-  vehicle.wheelInfos[1].frictionSlip = 3.8;
-  vehicle.wheelInfos[2].frictionSlip = 1.85;
-  vehicle.wheelInfos[3].frictionSlip = 1.85;
+  const wg = weatherGrip();
+  vehicle.wheelInfos[0].frictionSlip = 3.8 * wg;
+  vehicle.wheelInfos[1].frictionSlip = 3.8 * wg;
+  vehicle.wheelInfos[2].frictionSlip = 1.85 * wg;
+  vehicle.wheelInfos[3].frictionSlip = 1.85 * wg;
 
   nitroAmount = Math.min(100, nitroAmount + 24 * dt);
   const rearLeft = carGroup.position.clone().add(new T.Vector3(-1.0, 0.1, -1.5).applyQuaternion(carGroup.quaternion));
@@ -5693,7 +5763,7 @@ function updateControls(dt) {
   addViewers(Math.round(8000 * dt));
  } else {
   // Normal sürüşte sağlam yol tutuşu (3.8) - tok, oturaklı ve ağırlıklı sürüş hissi
-  for (let i = 0; i < 4; i++) vehicle.wheelInfos[i].frictionSlip = 3.8;
+  for (let i = 0; i < 4; i++) vehicle.wheelInfos[i].frictionSlip = 3.8 * weatherGrip();
  }
 
  // 4. Direksiyon: Hıza duyarlı ağırbaşlı dönüş (Yüksek hızda ani savrulmayı önler)
@@ -6128,7 +6198,7 @@ function updateMines(dt) {
     if (dist < 2.2) {
      // Patla!
      createExplosion(m.pos, 11, 4200);
-     applyAIDamage(ai, 55, m.pos, new T.Vector3(0, 1, 0));
+     applyAIDamage(ai, 55, m.pos, new T.Vector3(0, 1, 0), 'mine');
      scene.remove(m.group);
      activeMines.splice(i, 1);
      showBanner(`💣 MAYIN İSABETİ: ${ai.name} HAVAYA UÇTU!`, 'buff-sword');
@@ -6215,7 +6285,7 @@ function performSideShunt(dir) {
   if (toAI.length() < 3.4) {
    const aiDir = new T.Vector3(toAI.x, 0, toAI.z).normalize();
    if (sideDir.dot(aiDir) > 0.5) {
-    applyAIDamage(ai, 42, ai.chassisBody.position, new T.Vector3(0, 1, 0));
+    applyAIDamage(ai, 42, ai.chassisBody.position, new T.Vector3(0, 1, 0), 'ram');
     const aiShunt = sideDir.clone().multiplyScalar(18000);
     ai.chassisBody.applyImpulse(new CANNON.Vec3(aiShunt.x, 500, aiShunt.z), ai.chassisBody.position);
     showBanner(`💥 YAN DARBE (SHUNT)! ${ai.name} BİÇİLDİ!`, 'buff-sword');
@@ -6271,7 +6341,7 @@ function callHelicopterStrike() {
  setTimeout(() => {
   if (leaderAI && !leaderAI.isDead) {
    createExplosion(leaderAI.chassisBody.position, 14, 5500);
-   applyAIDamage(leaderAI, 75, leaderAI.chassisBody.position, new T.Vector3(0, 1, 0));
+   applyAIDamage(leaderAI, 75, leaderAI.chassisBody.position, new T.Vector3(0, 1, 0), 'airstrike');
    showBanner(`💥 HAVA SALDIRISI İSABETİ! ${leaderAI.name} VURULDU!`, 'buff-sword');
   } else if (dreadnought && dreadnought.isActive && !dreadnought.isDead) {
    createExplosion(dreadnoughtBody.position, 16, 6000);
@@ -6400,6 +6470,12 @@ function showPostRaceStats(isEscape = false) {
  document.getElementById('stat-nearmiss').textContent = raceStats.nearMisses;
  document.getElementById('stat-drift').textContent = Math.round(raceStats.driftScore) + ' PTS';
  document.getElementById('stat-credits').textContent = '+' + fmtTR(Math.max(0, playerCredits - raceStartCredits)) + ' PTS';
+ const tdEl = document.getElementById('stat-td-types');
+ if (tdEl) {
+  const tt = raceStats.takedownTypes || {};
+  const parts = Object.keys(tt).map(k => `${TAKEDOWN_TYPES[k] ? TAKEDOWN_TYPES[k].name : k} ×${tt[k]}`);
+  tdEl.textContent = parts.length ? parts.join(' · ') : '—';
+ }
  const rankEl = document.getElementById('stat-rank');
  if (rankEl) rankEl.textContent = isEscape ? 'KAÇTI' : `${raceStats.finishRank || playerRank}. SIRA (+${fmtTR(raceStats.finishReward || 0)})`;
  const nextBtn = document.getElementById('post-race-next');
@@ -6505,7 +6581,7 @@ function updateActivationPlates(dt) {
      showBanner(`${ai.name} KALKANLA KORUNDU!`, 'buff-shield');
     } else if (p.type === 'skull') {
      triggerFlameJet(p.x - 2, p.z - 2); triggerFlameJet(p.x + 2, p.z - 2);
-     applyAIDamage(ai, 30, ai.chassisBody.position, new T.Vector3(0, 1, 0));
+     applyAIDamage(ai, 30, ai.chassisBody.position, new T.Vector3(0, 1, 0), 'trap');
      showBanner(`${ai.name} ALEV TUZAĞINA YAKALANDI!`, 'buff-sword');
      showRadioMessage(`Güzel! ${ai.name} alev tuzağına düştü!`);
     }
@@ -6807,7 +6883,7 @@ function updateCheckpoints(dt) {
    } else {
     showBanner(`ELEME! ${lastRacer.name} SONUNCU KALDI VE ELENDİ!`, 'buff-sword');
     showRadioMessage(`${lastRacer.name} süresi doldu ve havaya uçtu!`);
-    applyAIDamage(lastRacer.ai, 999);
+    applyAIDamage(lastRacer.ai, 999, null, null, 'elimination');
    }
   }
  }
@@ -7444,6 +7520,30 @@ function renderPipView() {
 const FIXED_DT = 1 / 60;
 let last = performance.now();
 
+// Fizik çözücüsü bir aracı NaN konuma fırlatırsa (aşırı iç içe geçme vb.) oyunu kurtar:
+// aracı son sağlam konumuna geri al. Sağlam durumda kare başına yalnızca birkaç kopyalama yapar.
+const _lastGoodPlayer = new CANNON.Vec3(0, 0.85, 0);
+function guardBody(body, lastGood) {
+ const p = body.position, v = body.velocity;
+ if (Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z) && Number.isFinite(v.x)) {
+  lastGood.copy(p);
+  return;
+ }
+ body.position.set(lastGood.x, lastGood.y + 1.0, lastGood.z);
+ body.quaternion.set(0, 0, 0, 1);
+ body.velocity.set(0, 0, 0);
+ body.angularVelocity.set(0, 0, 0);
+ body.force.set(0, 0, 0);
+ body.torque.set(0, 0, 0);
+}
+function guardPhysicsNaN() {
+ guardBody(chassisBody, _lastGoodPlayer);
+ for (const ai of aiOpponents) {
+  if (!ai.lastGoodPos) ai.lastGoodPos = new CANNON.Vec3().copy(ai.chassisBody.position);
+  guardBody(ai.chassisBody, ai.lastGoodPos);
+ }
+}
+
 function syncMeshes() {
  carGroup.position.set(chassisBody.position.x, chassisBody.position.y, chassisBody.position.z);
  carGroup.quaternion.set(chassisBody.quaternion.x, chassisBody.quaternion.y, chassisBody.quaternion.z, chassisBody.quaternion.w);
@@ -7557,7 +7657,7 @@ function updateBulletsAndFX(dt) {
    if (hitBody !== groundBody) {
     hitBody.applyImpulse(new CANNON.Vec3(b.vel.x * 0.4, b.vel.y * 0.4, b.vel.z * 0.4), result.hitPointWorld);
     if (hitBody.targetData && hitBody.targetData.onHit) {
-     hitBody.targetData.onHit(b.damage || (b.isHeavyCannon ? 45 : 25), hitPt, hitNorm);
+     hitBody.targetData.onHit(b.damage || (b.isHeavyCannon ? 45 : 25), hitPt, hitNorm, b.isEnemy ? 'ai' : 'gun');
      if (!b.isEnemy && hitBody.targetData.type === 'ai') applyAmmoEffect(hitBody.targetData.ai);
     }
    }
@@ -7570,7 +7670,7 @@ function updateBulletsAndFX(dt) {
  for (let i = activeRockets.length - 1; i >= 0; i--) {
   const r = activeRockets[i];
   r.life -= dt;
-  if (r.life <= 0) { scene.remove(r.mesh); activeRockets.splice(i, 1); continue; }
+  if (r.life <= 0 || !Number.isFinite(r.pos.x)) { scene.remove(r.mesh); activeRockets.splice(i, 1); continue; }
 
   if (r.target && !r.target.isDead) {
    const targetPos = r.target.body ? r.target.body.position : r.target.chassisBody.position;
@@ -7594,7 +7694,7 @@ function updateBulletsAndFX(dt) {
    if (r.fromAI && result.body === chassisBody) { applyCarDamage(28 * diffCfg().dmg, hitPt); rumble(1, 400); }
 
    if (result.body.targetData && result.body.targetData.onHit) {
-    result.body.targetData.onHit(65, hitPt, new T.Vector3(0, 1, 0));
+    result.body.targetData.onHit(65, hitPt, new T.Vector3(0, 1, 0), r.fromAI ? 'ai' : 'rocket');
    }
    scene.remove(r.mesh);
    activeRockets.splice(i, 1);
@@ -7968,7 +8068,7 @@ function loop(now) {
     const distToAI = pPos.distanceTo(ai.chassisBody.position);
     if (distToAI < 2.55) {
      const grindDmg = 25 * dt;
-     applyAIDamage(ai, grindDmg, ai.chassisBody.position);
+     applyAIDamage(ai, grindDmg, ai.chassisBody.position, null, 'blades');
      spawnSparks(ai.chassisBody.position, new T.Vector3(0, 1, 0), 4);
      if (Math.random() < 0.15) Snd.playMetalSnap();
      if (Math.random() < 0.05) detachAIPart(ai, Math.random() < 0.5 ? 'part_armor_l' : 'part_armor_r');
@@ -7992,8 +8092,10 @@ function loop(now) {
  // 165Hz / 144Hz / 60Hz monitörlerde sıfır tekleme için dinamik senkron fizik adımı
  const physicsDt = Math.min(0.02, dt);
  world.step(physicsDt);
+ guardPhysicsNaN();
  syncMeshes();
  updateGhost();
+ updateThreats(rawDt);
  updateBulletsAndFX(dt);
  updateActivationPlates(dt);
   updateAirdrops(dt);
@@ -8185,6 +8287,111 @@ function loop(now) {
    renderPipView();
   }
  }
+}
+
+/* ==========================================================
+   TELSİZ UYARILARI & TEHDİT GÖSTERGESİ
+   ==========================================================
+   Case tehlikeleri önceden haber verir: sana kilitlenen roket, önündeki rakip yağı/mayını,
+   arkadan hızla yaklaşan rakip, eleme sayacında sonunculuk, silahsızken öndeki kılıç plakası,
+   yakındaki Dreadnought. Roket ve önündeki tuzak için ekranda yön oklu gösterge çıkar. */
+const caseWarnTimes = {};
+function caseWarn(key, text, cooldownMs) {
+ const now = performance.now();
+ if (now - (caseWarnTimes[key] || -1e9) < cooldownMs) return;
+ caseWarnTimes[key] = now;
+ showRadioMessage(text, 'case');
+}
+const threatEl = document.getElementById('threat-hud');
+const threatArrowEl = document.getElementById('threat-arrow');
+const threatTextEl = document.getElementById('threat-text');
+const _thInv = new T.Quaternion();
+const _thLocal = new T.Vector3();
+let threatTimer = 0;
+let lastThreatHtmlKey = '';
+
+// Bir dünya noktasının oyuncuya göre yönü (derece, 0 = ileri, saat yönü) ve mesafesi
+function relativeBearing(x, y, z) {
+ const p = chassisBody.position;
+ _thLocal.set(x - p.x, y - p.y, z - p.z).applyQuaternion(_thInv.copy(carGroup.quaternion).invert());
+ return { deg: Math.atan2(-_thLocal.x, _thLocal.z) * 180 / Math.PI, dist: Math.hypot(_thLocal.x, _thLocal.z), ahead: _thLocal.z, lateral: Math.abs(_thLocal.x) };
+}
+
+function updateThreats(dt) {
+ threatTimer -= dt;
+ if (threatTimer > 0) return;
+ threatTimer = 0.1;
+ if (!isGameStarted || garageModeActive || raceFinished || carHealth <= 0) { setThreat(null); return; }
+
+ let top = null; // en acil tehdit (gösterge için)
+
+ // 1. Sana kilitlenen roketler
+ for (const r of activeRockets) {
+  if (r.target !== PLAYER_TARGET) continue;
+  const b = relativeBearing(r.pos.x, r.pos.y, r.pos.z);
+  if (b.dist > 130) continue;
+  if (!r.warned) { r.warned = true; caseWarn('rocket', `${r.fromAI ? r.fromAI.name : 'Biri'} roket ateşledi! Sert kır, kaç!`, 2500); }
+  if (!top || b.dist < top.dist) top = { kind: 'rocket', label: `🚀 ROKET ${Math.round(b.dist)} m`, deg: b.deg, dist: b.dist };
+ }
+
+ // 2. Önündeki rakip yağı / mayını
+ const checkHazard = (h, label, warnText) => {
+  if (!h.owner) return;
+  const b = relativeBearing(h.pos.x, 0.3, h.pos.z);
+  if (b.ahead < 0 || b.ahead > 70 || b.lateral > 7) return;
+  if (!h.warned) { h.warned = true; caseWarn('hazard', warnText, 3000); }
+  if (!top) top = { kind: 'hazard', label: `${label} ${Math.round(b.dist)} m`, deg: b.deg, dist: b.dist };
+ };
+ for (const o of activeOilSlicks) checkHazard(o, '🛢️ YAĞ', 'Önünde yağ var! Direksiyonu sabit tut!');
+ for (const m of activeMines) checkHazard(m, '💣 MAYIN', 'Önünde mayın! Şerit değiştir!');
+
+ // 3. Arkadan hızla yaklaşan rakip
+ const pv = chassisBody.velocity;
+ for (const ai of aiOpponents) {
+  if (ai.isDead) continue;
+  const ap = ai.chassisBody.position;
+  const b = relativeBearing(ap.x, ap.y, ap.z);
+  if (b.ahead > -4 || b.dist > 30) continue;
+  const av = ai.chassisBody.velocity;
+  const closing = Math.hypot(av.x, av.z) - Math.hypot(pv.x, pv.z);
+  if (closing > 6 || ai.isNemesis) caseWarn('behind', `${ai.name} arkandan geliyor, dikkat!`, 18000);
+ }
+
+ // 4. Eleme sayacında sonuncu
+ if (aiFireEnabled && raceSetting('elimination') !== 'off' && eliminationTimer < 10 && eliminationTimer > 0) {
+  const alive = aiOpponents.filter(a => !a.isDead).length + 1;
+  if (playerRank >= alive) caseWarn('elim', 'Sonuncusun! 10 saniyen var, birini geç yoksa patlarsın!', 40000);
+  if (eliminationHudEl) eliminationHudEl.classList.toggle('danger', playerRank >= alive);
+ } else if (eliminationHudEl) eliminationHudEl.classList.remove('danger');
+
+ // 5. Silahsızken öndeki kılıç plakası
+ if (!weaponsLocked() && !weaponsUnlimited() && armory.gun <= 0) {
+  for (const p of activationPlates) {
+   if (p.type !== 'sword' || p.cooldown > 0) continue;
+   const b = relativeBearing(p.x, 0, p.z);
+   if (b.ahead > 0 && b.ahead < 150 && b.lateral < 15) { caseWarn('plate', 'Önde kılıç plakası var, üzerinden geç ve silahlan!', 30000); break; }
+  }
+ }
+
+ // 6. Dreadnought yakında
+ if (dreadnought.isActive && !dreadnought.isDead) {
+  const dp = dreadnoughtBody.position;
+  if (relativeBearing(dp.x, dp.y, dp.z).dist < 70) caseWarn('dread', 'Dreadnought çok yakın! Topunun önünde durma!', 25000);
+ }
+
+ setThreat(top);
+}
+
+function setThreat(t) {
+ if (!threatEl) return;
+ if (!t) {
+  if (lastThreatHtmlKey) { threatEl.className = ''; lastThreatHtmlKey = ''; }
+  return;
+ }
+ const key = t.label;
+ if (key !== lastThreatHtmlKey) { threatTextEl.textContent = t.label; lastThreatHtmlKey = key; }
+ threatEl.className = 'show ' + t.kind;
+ threatArrowEl.style.transform = `rotate(${Math.round(t.deg)}deg)`;
 }
 
 /* ==========================================================
