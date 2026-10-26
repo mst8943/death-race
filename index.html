@@ -1,0 +1,1812 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Death Race — Arena</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#0a0a0c;font-family:system-ui,sans-serif}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  #rain-canvas{position:absolute;inset:0;pointer-events:none;z-index:15}
+  #hud{position:absolute;left:14px;bottom:14px;color:#fff;font-size:12px;text-shadow:0 1px 4px #000;pointer-events:none;line-height:1.6}
+  #hud b{color:#ffcc44}
+  #hud .key{background:rgba(255,255,255,0.18);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);font-family:monospace;font-weight:700}
+  #crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;width:32px;height:32px}
+  #crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,200,60,0.7)}
+  #crosshair::before{top:0;bottom:0;left:15px;width:2px}
+  #crosshair::after{left:0;right:0;top:15px;height:2px}
+  #crosshair .dot{position:absolute;top:14px;left:14px;width:4px;height:4px;background:#ff4422;border-radius:50%}
+  #speed{position:absolute;right:16px;bottom:16px;color:#fff;font-size:36px;font-weight:900;text-shadow:0 2px 6px #000;pointer-events:none}
+  #speed small{font-size:14px;font-weight:600;opacity:.8}
+
+  /* Silah Isısı ve Nitro Barları */
+  #ammo-bar{position:absolute;right:18px;bottom:66px;width:130px;height:8px;background:rgba(0,0,0,0.65);border:1px solid #444;border-radius:4px;overflow:hidden;pointer-events:none}
+  #ammo-fill{height:100%;width:100%;background:#ffcc44;transition:width 0.05s linear}
+  #nitro-bar{position:absolute;right:18px;bottom:78px;width:130px;height:12px;background:rgba(10,20,30,0.85);border:1px solid #00a8ff;border-radius:4px;overflow:hidden;box-shadow:0 0 10px rgba(0,168,255,0.3);pointer-events:none}
+  #nitro-fill{height:100%;width:100%;background:linear-gradient(90deg,#00a8ff,#00e1ff);transition:width 0.05s linear}
+  #nitro-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;letter-spacing:1px;color:#fff;text-shadow:0 1px 2px #000}
+
+  #armor-bar{position:absolute;left:14px;bottom:72px;width:170px;height:18px;background:rgba(10,12,16,0.85);border:1.5px solid rgba(255,255,255,0.3);border-radius:4px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.8);pointer-events:none}
+  #armor-fill{height:100%;width:100%;background:linear-gradient(90deg,#27ae60,#2ecc71);transition:width 0.1s ease-out,background 0.2s ease}
+  #armor-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;letter-spacing:1px;color:#fff;text-shadow:0 1px 3px #000}
+  #race-hud{position:absolute;top:16px;left:18px;color:#fff;pointer-events:none;text-shadow:0 2px 6px #000}
+  #lap-display{font-size:24px;font-weight:900;letter-spacing:1px;color:#ffcc44}
+  #time-display{font-size:14px;font-weight:700;opacity:0.9;font-family:monospace;margin-top:2px}
+  #banner{position:absolute;top:13%;left:50%;transform:translate(-50%,-50%);font-size:16px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;color:#fff;background:rgba(18,20,26,0.88);box-shadow:0 8px 24px rgba(0,0,0,0.7);pointer-events:none;opacity:0;transition:opacity 0.2s,transform 0.25s;padding:10px 24px;border-radius:6px;border:1.5px solid rgba(255,200,60,0.4);z-index:99;white-space:nowrap}
+  #banner.show{opacity:1;transform:translate(-50%,-50%) scale(1.04)}
+  #buff-box{position:absolute;left:14px;bottom:96px;display:flex;flex-direction:column;gap:4px;pointer-events:none}
+  .buff-tag{font-size:12px;font-weight:800;letter-spacing:1px;padding:3px 10px;border-radius:4px;color:#fff;text-shadow:0 1px 3px #000}
+  .buff-sword{background:rgba(230,126,34,0.85);border:1px solid #f39c12}
+  .buff-shield{background:rgba(41,128,185,0.85);border:1px solid #3498db}
+
+  /* Eleme Sayacı (Elimination Mode) */
+  #elimination-hud{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(180,20,20,0.85);border:1.5px solid #ff4444;border-radius:6px;padding:4px 16px;color:#fff;font-weight:900;font-size:13px;letter-spacing:1.5px;text-shadow:0 1px 4px #000;box-shadow:0 0 15px rgba(255,0,0,0.4);pointer-events:none;z-index:80}
+  #elimination-timer{color:#ffcc00;font-family:monospace;font-size:15px}
+
+  /* Case & Spiker Telsiz Kutusu */
+  #radio-box{position:absolute;left:18px;top:76px;max-width:360px;background:rgba(12,15,22,0.92);border-left:4px solid #ffcc44;border-radius:0 6px 6px 0;padding:8px 14px;color:#fff;pointer-events:none;opacity:0;transform:translateX(-12px);transition:opacity 0.25s,transform 0.25s;box-shadow:0 4px 18px rgba(0,0,0,0.8);z-index:90}
+  #radio-box.show{opacity:1;transform:translateX(0)}
+  #radio-box.case{border-left-color:#00d2ff}
+  #radio-box.case #radio-head{color:#00d2ff}
+  #radio-box.case .radio-dot{background:#00e1ff;box-shadow:0 0 6px #00e1ff}
+  #radio-box.hennessey{border-left-color:#ff3322}
+  #radio-box.hennessey #radio-head{color:#ff4433}
+  #radio-box.hennessey .radio-dot{background:#ff2200;box-shadow:0 0 8px #ff0000}
+  #radio-head{font-size:10px;font-weight:900;letter-spacing:1.5px;color:#ffcc44;display:flex;align-items:center;gap:6px;margin-bottom:3px}
+  .radio-dot{width:6px;height:6px;background:#2ecc71;border-radius:50%;box-shadow:0 0 6px #2ecc71}
+  #radio-text{font-size:12px;font-weight:700;line-height:1.4;opacity:0.95;color:#e8ebf0}
+
+  /* Dreadnought Boss Can Barı */
+  #boss-hud{position:absolute;top:54px;left:50%;transform:translateX(-50%);width:360px;background:rgba(15,10,10,0.9);border:1.5px solid #ff2200;border-radius:6px;padding:6px 12px;box-shadow:0 4px 20px rgba(255,0,0,0.4);pointer-events:none;display:none;z-index:95}
+  #boss-hud.show{display:block;animation:bossPulse 1.2s infinite alternate}
+  @keyframes bossPulse{from{box-shadow:0 0 12px rgba(255,0,0,0.3)}to{box-shadow:0 0 25px rgba(255,50,0,0.7)}}
+  #boss-label{font-size:12px;font-weight:900;letter-spacing:1.5px;color:#ff4422;text-align:center;text-shadow:0 1px 4px #000;margin-bottom:4px}
+  #boss-bar-bg{width:100%;height:10px;background:rgba(255,255,255,0.1);border-radius:5px;overflow:hidden}
+  #boss-fill{height:100%;width:100%;background:linear-gradient(90deg,#c0392b,#ff3300);transition:width 0.1s ease}
+
+  /* Canlı Yayın Reytingi & Sıralama */
+  #ratings-box{position:absolute;top:16px;right:18px;text-align:right;color:#fff;pointer-events:none;text-shadow:0 2px 6px #000}
+  #live-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:900;letter-spacing:1.5px;color:#ff4444;background:rgba(0,0,0,0.65);padding:2px 8px;border-radius:4px;border:1px solid rgba(255,50,50,0.4);margin-bottom:4px}
+  #live-dot{width:7px;height:7px;background:#ff2222;border-radius:50%;box-shadow:0 0 8px #ff0000;animation:pulse 1s infinite alternate}
+  @keyframes pulse{from{opacity:0.35}to{opacity:1}}
+  #viewer-count{font-size:22px;font-weight:900;letter-spacing:1px;font-family:monospace;color:#ffdd44}
+  #viewer-label{font-size:10px;font-weight:700;letter-spacing:1.5px;opacity:0.8;text-transform:uppercase}
+  #position-badge{display:inline-block;font-size:20px;font-weight:900;color:#fff;background:linear-gradient(135deg,#c0392b,#e74c3c);padding:2px 14px;border-radius:6px;margin-top:5px;border:1px solid rgba(255,255,255,0.3);box-shadow:0 2px 10px rgba(0,0,0,0.6)}
+
+  /* 4'lü Rakip Can Tablosu */
+  #rivals-hud{position:absolute;top:125px;right:18px;width:185px;display:flex;flex-direction:column;gap:4px;pointer-events:none}
+  .rival-card{background:rgba(12,14,18,0.85);border:1px solid rgba(255,255,255,0.18);border-radius:4px;padding:3px 8px;display:flex;flex-direction:column;gap:2px;box-shadow:0 2px 6px rgba(0,0,0,0.7)}
+  .rival-head{display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:900;letter-spacing:0.8px;color:#fff}
+  .rival-bar{width:100%;height:4px;background:rgba(255,255,255,0.12);border-radius:2px;overflow:hidden}
+  .rival-fill{height:100%;width:100%;background:#e74c3c;transition:width 0.15s ease}
+
+  /* Cephanelik İkincil Silah Çubuğu */
+  #weapons-hud{position:absolute;right:18px;bottom:96px;display:flex;gap:6px;pointer-events:none}
+  .wep-slot{background:rgba(15,18,24,0.85);border:1px solid rgba(255,255,255,0.25);border-radius:4px;padding:3px 8px;font-size:11px;font-weight:800;color:#fff;display:flex;align-items:center;gap:4px;box-shadow:0 2px 6px rgba(0,0,0,0.6)}
+  .wep-slot.ready{border-color:#2ecc71;color:#2ecc71}
+  .wep-slot.cooling{opacity:0.4}
+
+  /* GARAJ / YÜKSELTMELER MODALI & 3D VİTRİN */
+  #garage-modal{position:absolute;inset:0;background:rgba(8,10,14,0.92);display:none;align-items:center;justify-content:flex-end;padding-right:24px;z-index:200}
+  #garage-modal.open{display:flex}
+  .garage-panel{width:560px;max-height:95vh;overflow-y:auto;background:linear-gradient(145deg,#121620,#1a202c);border:2px solid #ffcc44;border-radius:10px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,0.9);color:#fff}
+  .garage-title{font-size:20px;font-weight:900;letter-spacing:2px;color:#ffcc44;text-transform:uppercase;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center}
+  .garage-subtitle{font-size:11px;opacity:0.75;margin-bottom:12px}
+
+  /* Garaj Sekmeleri */
+  .garage-tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:8px}
+  .garage-tab{flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:7px 3px;font-size:10.5px;font-weight:900;color:#ccc;cursor:pointer;text-align:center;transition:all 0.2s}
+  .garage-tab:hover{background:rgba(255,204,68,0.15);color:#fff}
+  .garage-tab.active{background:#ffcc44;color:#111;border-color:#ffcc44;box-shadow:0 0 10px rgba(255,204,68,0.4)}
+
+  .tab-pane{display:none}
+  .tab-pane.active{display:block}
+
+  .custom-section{margin-bottom:14px}
+  .custom-title{font-size:11.5px;font-weight:900;letter-spacing:1px;color:#ffcc44;margin-bottom:6px}
+  .custom-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:7px}
+  .custom-card{background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.15);border-radius:6px;padding:8px;cursor:pointer;text-align:center;transition:all 0.2s}
+  .custom-card:hover{border-color:#ffcc44;transform:translateY(-2px)}
+  .custom-card.active{border-color:#2ecc71;background:rgba(46,204,113,0.15);box-shadow:0 0 10px rgba(46,204,113,0.3)}
+  .custom-card-title{font-size:10.5px;font-weight:800;color:#fff;margin-bottom:2px}
+  .custom-card-desc{font-size:9px;opacity:0.75;line-height:1.2}
+
+  .garage-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+  .upgrade-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:5px;cursor:pointer;transition:all 0.2s}
+  .upgrade-card:hover{background:rgba(255,204,68,0.1);border-color:#ffcc44;transform:translateY(-2px)}
+  .upgrade-head{display:flex;justify-content:space-between;font-weight:900;font-size:12.5px}
+  .upgrade-desc{font-size:10px;opacity:0.8;line-height:1.3}
+  .upgrade-cost{font-size:11px;color:#ffcc44;font-weight:800;align-self:flex-end}
+
+  .skin-swatch{width:100%;height:20px;border-radius:4px;margin-bottom:4px;border:1px solid rgba(0,0,0,0.5)}
+
+  .garage-footer{display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.1);padding-top:12px}
+  .btn-close-garage{background:#ffcc44;color:#111;font-weight:900;border:none;padding:9px 22px;border-radius:6px;cursor:pointer;font-size:13px;letter-spacing:1px;transition:background 0.2s}
+  .btn-close-garage:hover{background:#ffe066}
+
+  /* Showroom & Atölye Sol Bilgi Kartı */
+  #garage-stats-card{position:absolute;left:24px;top:80px;width:320px;background:rgba(12,16,24,0.96);border:1.5px solid rgba(255,204,68,0.45);border-radius:10px;padding:16px;color:#fff;box-shadow:0 12px 35px rgba(0,0,0,0.85);pointer-events:none;transition:all 0.3s;z-index:210}
+  .stat-header{border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:8px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .stat-car-name{font-size:16px;font-weight:900;letter-spacing:1.5px;color:#ffcc44}
+  .stat-car-class{font-size:10px;font-weight:800;background:rgba(255,204,68,0.2);color:#ffcc44;padding:3px 7px;border-radius:4px;border:1px solid rgba(255,204,68,0.35)}
+  .stat-row{margin-bottom:10px}
+  .stat-row-top{display:flex;justify-content:space-between;font-size:11px;font-weight:800;margin-bottom:4px}
+  .stat-name{color:#aaa}
+  .stat-val{color:#fff;font-weight:900}
+  .stat-bar-track{width:100%;height:8px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;border:1px solid rgba(255,255,255,0.1)}
+  .stat-bar-fill{height:100%;border-radius:4px;transition:width 0.4s cubic-bezier(0.2,0.8,0.2,1)}
+  #stat-bar-speed{background:linear-gradient(90deg,#00a8ff,#00d2ff);box-shadow:0 0 8px rgba(0,210,255,0.5)}
+  #stat-bar-armor{background:linear-gradient(90deg,#2ecc71,#27ae60);box-shadow:0 0 8px rgba(46,204,113,0.5)}
+  #stat-bar-firepower{background:linear-gradient(90deg,#e67e22,#e74c3c);box-shadow:0 0 8px rgba(231,76,60,0.5)}
+  #stat-bar-rockets{background:linear-gradient(90deg,#9b59b6,#8e44ad);box-shadow:0 0 8px rgba(155,89,182,0.5)}
+
+  /* Alt Kontrol & Kamera Barı */
+  #garage-bottom-bar{position:absolute;bottom:20px;left:24px;display:flex;gap:8px;align-items:center;z-index:210}
+  .g-view-btn{background:rgba(18,22,30,0.94);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:9px 13px;font-size:11px;font-weight:800;color:#ddd;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.2s}
+  .g-view-btn:hover{background:rgba(255,204,68,0.2);border-color:#ffcc44;color:#fff;transform:translateY(-2px)}
+  .g-view-btn.active{background:#ffcc44;color:#111;border-color:#ffcc44;box-shadow:0 0 12px rgba(255,204,68,0.5)}
+  .g-view-btn.rev-btn{background:linear-gradient(135deg,#c0392b,#e74c3c);border-color:#e74c3c;color:#fff;box-shadow:0 0 10px rgba(231,76,60,0.4)}
+  .g-view-btn.rev-btn:hover{background:linear-gradient(135deg,#e74c3c,#ff5722);transform:scale(1.04)}
+
+  /* 3D Orbit İpucu Rozeti */
+  #garage-orbit-hint{position:absolute;left:24px;bottom:70px;background:rgba(0,0,0,0.65);padding:5px 12px;border-radius:20px;border:1px solid rgba(255,255,255,0.15);font-size:11px;font-weight:700;color:#aaa;pointer-events:none;z-index:210;display:flex;align-items:center;gap:6px}
+
+
+  /* Mobil Dokunmatik Kontroller */
+  #touch-controls{position:absolute;inset:0;pointer-events:none}
+  .touch-btn{position:absolute;pointer-events:auto;user-select:none;display:flex;align-items:center;justify-content:center;background:rgba(20,24,32,0.68);border:2px solid rgba(255,255,255,0.3);border-radius:50%;color:#fff;font-weight:900;text-shadow:0 1px 4px #000;box-shadow:0 4px 12px rgba(0,0,0,0.6);touch-action:none}
+  .touch-btn:active{background:rgba(255,200,60,0.45);border-color:#ffcc44;transform:scale(0.94)}
+  #btn-left{left:20px;bottom:30px;width:64px;height:64px;font-size:24px}
+  #btn-right{left:96px;bottom:30px;width:64px;height:64px;font-size:24px}
+  #btn-gas{right:24px;bottom:110px;width:70px;height:70px;font-size:14px;background:rgba(46,204,113,0.35);border-color:#2ecc71}
+  #btn-brake{right:24px;bottom:26px;width:66px;height:66px;font-size:13px;background:rgba(231,76,60,0.35);border-color:#e74c3c}
+  #btn-fire{right:110px;bottom:60px;width:74px;height:74px;font-size:26px;background:rgba(243,156,18,0.45);border-color:#f39c12}
+  #btn-nitro{right:110px;bottom:150px;width:56px;height:56px;font-size:12px;background:rgba(0,168,255,0.4);border-color:#00e1ff}
+  #btn-rpg{right:180px;bottom:68px;width:52px;height:52px;font-size:18px;background:rgba(231,76,60,0.4);border-color:#e74c3c}
+  #btn-oil{right:176px;bottom:135px;width:48px;height:48px;font-size:16px}
+  #btn-tombstone{right:110px;bottom:218px;width:48px;height:48px;font-size:13px}
+  #btn-smoke{right:42px;bottom:192px;width:48px;height:48px;font-size:13px}
+
+  @media (hover: hover) and (pointer: fine) {
+    #touch-controls{display:none}
+  }
+
+  /* Taktiksel Radar / Minimap HUD */
+  #radar-hud {
+    position: absolute;
+    top: 135px;
+    left: 18px;
+    width: 184px;
+    background: rgba(10, 14, 20, 0.85);
+    border: 1.5px solid rgba(0, 225, 255, 0.45);
+    border-radius: 8px;
+    padding: 5px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.8), inset 0 0 12px rgba(0,225,255,0.06);
+    pointer-events: none;
+    z-index: 10;
+  }
+  #radar-title {
+    font-size: 8.5px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    color: #00e1ff;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  #radar-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2ecc71;
+    box-shadow: 0 0 6px #2ecc71;
+    animation: radar-blink 1s infinite alternate;
+  }
+  @keyframes radar-blink { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+  #radar-canvas {
+    width: 180px;
+    height: 135px;
+    display: block;
+    border-radius: 4px;
+    background: rgba(5, 8, 12, 0.92);
+  }
+
+
+  /* OYUN MODU SEÇİCİ & BAŞLATMA PENCERESİ */
+  #game-mode-hud {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    background: rgba(12, 16, 24, 0.88);
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    border-radius: 24px;
+    padding: 3px 6px;
+    gap: 4px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 10px rgba(0,225,255,0.1);
+    z-index: 100;
+  }
+  .mode-pill-btn {
+    background: transparent;
+    border: none;
+    border-radius: 18px;
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    color: #99a2b0;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .mode-pill-btn:hover {
+    color: #fff;
+    background: rgba(255,255,255,0.06);
+  }
+  .mode-pill-btn.active.combat {
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(231,76,60,0.6);
+  }
+  .mode-pill-btn.active.peaceful {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    color: #fff;
+    box-shadow: 0 0 14px rgba(46,204,113,0.7);
+  }
+  .mode-pill-settings {
+    background: rgba(255,255,255,0.08);
+    border: none;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+  .mode-pill-settings:hover {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    transform: rotate(45deg);
+  }
+
+  /* BAŞLATMA PENCERESİ (START MODAL) */
+  #mode-select-modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(6, 9, 14, 0.94);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    padding: 20px;
+    animation: modal-fade-in 0.25s ease-out;
+  }
+  #mode-select-modal.open {
+    display: flex;
+  }
+  @keyframes modal-fade-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .mode-modal-card {
+    background: linear-gradient(145deg, #101520, #18202d);
+    border: 2px solid #ffcc44;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 680px;
+    padding: 24px;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.95), 0 0 25px rgba(255,204,68,0.25);
+    color: #fff;
+    position: relative;
+  }
+  .mode-modal-tag {
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #ffcc44;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .mode-modal-title {
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+    color: #fff;
+  }
+  .mode-modal-desc {
+    font-size: 12px;
+    color: #a0aec0;
+    margin-bottom: 20px;
+    line-height: 1.4;
+  }
+  .mode-cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media(max-width: 600px) {
+    .mode-cards-grid { grid-template-columns: 1fr; }
+  }
+  .mode-choice-card {
+    background: rgba(255,255,255,0.03);
+    border: 2px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+    overflow: hidden;
+    user-select: none;
+  }
+  .mode-choice-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.45);
+    background: rgba(255,255,255,0.08);
+  }
+  .mode-choice-card:active {
+    transform: scale(0.97) !important;
+    border-color: #ffcc44 !important;
+    background: rgba(255,204,68,0.15) !important;
+  }
+  .mode-choice-card.selected {
+    border-color: #ffcc44 !important;
+    box-shadow: 0 0 25px rgba(255,204,68,0.6) !important;
+    background: rgba(255,204,68,0.2) !important;
+  }
+  #mode-select-modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(6, 9, 14, 0.94);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    padding: 20px;
+    animation: modal-fade-in 0.25s ease-out;
+    transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+  }
+  #mode-select-modal.closing {
+    opacity: 0;
+    transform: scale(0.98);
+    pointer-events: none;
+  }
+  .mode-choice-card.recommended {
+    border-color: #2ecc71;
+    background: rgba(46,204,113,0.06);
+  }
+  .mode-choice-card.recommended:hover {
+    border-color: #2ecc71;
+    box-shadow: 0 0 20px rgba(46,204,113,0.3);
+  }
+
+  /* TAKEDOWN PICTURE-IN-PICTURE (PIP) KÖŞE KAMERA EKRANI */
+  #takedown-pip-container {
+    position: absolute;
+    top: 295px;
+    right: 18px;
+    width: 280px;
+    background: rgba(8, 10, 14, 0.95);
+    border: 2px solid #e74c3c;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(231, 76, 60, 0.65), 0 8px 30px rgba(0, 0, 0, 0.9);
+    z-index: 150;
+    display: none;
+    flex-direction: column;
+    pointer-events: none;
+    transform: scale(0.9) translateX(25px);
+    opacity: 0;
+    transition: transform 0.22s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.22s ease;
+  }
+  #takedown-pip-container.active {
+    display: flex;
+    transform: scale(1) translateX(0);
+    opacity: 1;
+  }
+  .pip-header {
+    height: 24px;
+    background: linear-gradient(90deg, #c0392b, #e74c3c);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+    font-size: 10px;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .pip-rec-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #ffdddd;
+    animation: pip-rec-blink 0.75s infinite alternate;
+  }
+  @keyframes pip-rec-blink { from { opacity: 0.35; } to { opacity: 1; } }
+  .pip-cam-id { font-size: 9px; opacity: 0.9; background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 3px; }
+  #pip-canvas {
+    width: 280px;
+    height: 158px;
+    display: block;
+    background: #080a0e;
+  }
+  .pip-scanlines {
+    position: absolute;
+    top: 24px;
+    left: 0;
+    right: 0;
+    bottom: 24px;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%);
+    background-size: 100% 4px;
+    pointer-events: none;
+  }
+  .pip-footer {
+    height: 24px;
+    background: rgba(14, 17, 24, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+    font-size: 9px;
+    font-weight: 800;
+    color: #8892a0;
+  }
+  .pip-pts {
+    color: #ffcc44;
+    font-size: 11px;
+    font-weight: 900;
+  }
+  .mode-choice-icon {
+    font-size: 36px;
+    margin-bottom: 8px;
+  }
+  .mode-choice-title {
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    color: #fff;
+  }
+  .mode-choice-badge {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 9.5px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+  .mode-choice-badge.combat {
+    background: rgba(231,76,60,0.2);
+    color: #e74c3c;
+    border: 1px solid rgba(231,76,60,0.4);
+  }
+  .mode-choice-badge.peaceful {
+    background: rgba(46,204,113,0.2);
+    color: #2ecc71;
+    border: 1px solid rgba(46,204,113,0.4);
+  }
+  .mode-choice-desc {
+    font-size: 11px;
+    color: #cbd5e0;
+    line-height: 1.45;
+    margin-bottom: 16px;
+    flex-grow: 1;
+  }
+  .mode-choice-btn {
+    width: 100%;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 0;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-combat {
+    background: #c0392b;
+    color: #fff;
+  }
+  .btn-combat:hover {
+    background: #e74c3c;
+    box-shadow: 0 0 12px rgba(231,76,60,0.5);
+  }
+  .btn-peaceful {
+    background: #27ae60;
+    color: #fff;
+  }
+  .btn-peaceful:hover {
+    background: #2ecc71;
+    box-shadow: 0 0 14px rgba(46,204,113,0.6);
+  }
+  .mode-modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 12px;
+    font-size: 11px;
+    color: #8892a0;
+  }
+  .mode-kbd {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: monospace;
+    color: #ffcc44;
+  }
+
+
+  /* === YENİ ÖZELLİKLER & HUD EKLENTİLERİ === */
+  #stage-display {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid #3498db;
+    color: #5dade2;
+    text-shadow: 0 1px 3px #000;
+    box-shadow: 0 0 10px rgba(52,152,219,0.3);
+  }
+  #stage-display.stage-1 { border-color: #3498db; color: #5dade2; box-shadow: 0 0 10px rgba(52,152,219,0.4); }
+  #stage-display.stage-2 { border-color: #e74c3c; color: #ff5252; box-shadow: 0 0 12px rgba(231,76,60,0.5); }
+  #stage-display.stage-3 { border-color: #9b59b6; color: #e056fd; box-shadow: 0 0 16px rgba(155,89,182,0.6); }
+
+  /* Nemesis / Rivalry Uyarısı */
+  #nemesis-hud {
+    position: absolute;
+    top: 98px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(160, 15, 15, 0.92);
+    border: 2px solid #ff2200;
+    border-radius: 6px;
+    padding: 5px 18px;
+    color: #fff;
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-shadow: 0 1px 4px #000;
+    box-shadow: 0 0 20px rgba(255, 0, 0, 0.7);
+    pointer-events: none;
+    z-index: 85;
+    animation: nemesisPulse 0.8s infinite alternate;
+  }
+  @keyframes nemesisPulse {
+    from { transform: translateX(-50%) scale(0.97); }
+    to { transform: translateX(-50%) scale(1.03); }
+  }
+
+  /* Tombstone Arka Zırh Barı */
+  #tombstone-bar {
+    position: absolute;
+    left: 14px;
+    bottom: 50px;
+    width: 170px;
+    height: 16px;
+    background: rgba(10,12,16,0.85);
+    border: 1.5px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    pointer-events: none;
+  }
+  #tombstone-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #7f8c8d, #bdc3c7);
+    transition: width 0.1s ease-out;
+  }
+  #tombstone-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    color: #fff;
+    text-shadow: 0 1px 3px #000;
+  }
+
+  /* Fabrika Pit Stop Bildirimi */
+  #pit-hud {
+    position: absolute;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(16, 44, 25, 0.92);
+    border: 2px solid #2ecc71;
+    border-radius: 6px;
+    padding: 6px 20px;
+    color: #2ecc71;
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    box-shadow: 0 0 18px rgba(46, 204, 113, 0.7);
+    pointer-events: none;
+    z-index: 85;
+  }
+
+  /* Garaj Butonu */
+  .mode-pill-btn.garage-btn {
+    background: rgba(255,204,68,0.18);
+    border: 1.5px solid #ffcc44;
+    color: #ffcc44;
+    font-weight: 900;
+  }
+  .mode-pill-btn.garage-btn:hover {
+    background: #ffcc44;
+    color: #111;
+    box-shadow: 0 0 12px rgba(255,204,68,0.5);
+  }
+
+
+  /* === 22 YENİ MEKANİK HUD STİLLERİ === */
+  #slipstream-hud {
+    position: absolute;
+    top: 138px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 168, 255, 0.88);
+    border: 1.5px solid #00f0ff;
+    border-radius: 6px;
+    padding: 4px 16px;
+    color: #fff;
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-shadow: 0 1px 3px #000;
+    box-shadow: 0 0 18px rgba(0, 240, 255, 0.7);
+    pointer-events: none;
+    z-index: 90;
+    animation: slipPulse 0.5s infinite alternate;
+  }
+  @keyframes slipPulse {
+    from { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
+    to { opacity: 1; transform: translateX(-50%) scale(1.02); }
+  }
+
+  #bounty-hud {
+    position: absolute;
+    top: 68px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #d4ac0d, #f39c12);
+    border: 2px solid #fff;
+    border-radius: 6px;
+    padding: 5px 18px;
+    color: #111;
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    box-shadow: 0 0 22px rgba(243, 156, 18, 0.8);
+    pointer-events: none;
+    z-index: 92;
+    animation: bountyPulse 0.8s infinite alternate;
+  }
+  @keyframes bountyPulse {
+    from { box-shadow: 0 0 10px rgba(243, 156, 18, 0.5); }
+    to { box-shadow: 0 0 25px rgba(243, 156, 18, 1); }
+  }
+
+  #combo-hud {
+    position: absolute;
+    top: 172px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #e67e22, #c0392b);
+    border: 2px solid #ffcc44;
+    border-radius: 6px;
+    padding: 6px 22px;
+    color: #fff;
+    font-weight: 900;
+    font-size: 14px;
+    letter-spacing: 2px;
+    box-shadow: 0 0 25px rgba(230, 126, 34, 0.9);
+    pointer-events: none;
+    z-index: 95;
+    animation: comboPop 0.3s ease-out;
+  }
+  @keyframes comboPop {
+    from { transform: translateX(-50%) scale(0.6); opacity: 0; }
+    to { transform: translateX(-50%) scale(1); opacity: 1; }
+  }
+
+  #bullet-time-hud {
+    position: absolute;
+    inset: 0;
+    box-shadow: inset 0 0 120px rgba(0, 140, 255, 0.5);
+    pointer-events: none;
+    z-index: 75;
+    display: none;
+  }
+  .bullet-time-tag {
+    position: absolute;
+    bottom: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 100, 220, 0.9);
+    border: 1.5px solid #00d2ff;
+    border-radius: 4px;
+    padding: 4px 14px;
+    color: #fff;
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    box-shadow: 0 0 15px rgba(0, 210, 255, 0.6);
+  }
+
+  /* Yarış Sonu MVP ve İstatistik Modalı */
+  #post-race-modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 10, 15, 0.96);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+  }
+  .post-race-card {
+    background: linear-gradient(145deg, #101522, #182030);
+    border: 2px solid #ffcc44;
+    border-radius: 12px;
+    padding: 28px;
+    width: 580px;
+    max-width: 90vw;
+    color: #fff;
+    box-shadow: 0 0 60px rgba(0,0,0,0.9);
+    text-align: center;
+  }
+  .post-race-title {
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #ffcc44;
+    margin-bottom: 4px;
+  }
+  .post-race-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    color: #fff;
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    padding: 3px 12px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+    text-align: left;
+  }
+  .stat-item {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stat-label { font-size: 11px; opacity: 0.8; font-weight: 700; }
+  .stat-val { font-size: 14px; font-weight: 900; color: #ffcc44; font-family: monospace; }
+
+  /* SES & MÜZİK AYARLARI MODALI */
+  #audio-modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 11, 16, 0.94);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 250;
+  }
+  #audio-modal.open { display: flex; }
+  .audio-panel {
+    width: 530px;
+    max-width: 92vw;
+    background: linear-gradient(145deg, #0e131d, #182230);
+    border: 2px solid #00f0ff;
+    border-radius: 10px;
+    padding: 22px;
+    box-shadow: 0 14px 45px rgba(0, 0, 0, 0.92), 0 0 25px rgba(0, 240, 255, 0.18);
+    color: #fff;
+    font-family: inherit;
+  }
+  .audio-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+  }
+  .audio-title {
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    color: #00f0ff;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .audio-close-btn {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 900;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+  .audio-close-btn:hover { opacity: 1; color: #ff4444; }
+
+  .audio-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  .audio-row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .audio-label {
+    font-size: 11.5px;
+    font-weight: 800;
+    color: #e0e6ed;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .audio-val {
+    font-size: 12px;
+    font-weight: 900;
+    color: #00f0ff;
+    min-width: 44px;
+    text-align: right;
+    font-family: monospace;
+  }
+  .audio-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .audio-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: #242d3d;
+    outline: none;
+    cursor: pointer;
+  }
+  .audio-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #00f0ff;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.7);
+    transition: transform 0.1s;
+  }
+  .audio-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .audio-btn-sm {
+    background: rgba(0, 240, 255, 0.12);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    color: #00f0ff;
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .audio-btn-sm:hover {
+    background: #00f0ff;
+    color: #111;
+  }
+  .audio-btn-sm.active {
+    background: #2ecc71;
+    border-color: #2ecc71;
+    color: #111;
+  }
+  .audio-btn-sm.muted {
+    background: #e74c3c;
+    border-color: #e74c3c;
+    color: #fff;
+  }
+
+  .audio-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 12px;
+    margin-top: 6px;
+  }
+  .btn-audio-reset {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #aaa;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .btn-audio-reset:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+  }
+  .btn-audio-confirm {
+    background: #00f0ff;
+    color: #0b0e14;
+    font-weight: 900;
+    border: none;
+    padding: 9px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    letter-spacing: 1px;
+    box-shadow: 0 0 14px rgba(0, 240, 255, 0.4);
+  }
+  .btn-audio-confirm:hover { background: #38f5ff; }
+
+  /* Top bar audio button */
+  .mode-pill-btn.audio-btn {
+    border-color: rgba(0, 240, 255, 0.4);
+    color: #00f0ff;
+  }
+  .mode-pill-btn.audio-btn:hover {
+    background: rgba(0, 240, 255, 0.2);
+    border-color: #00f0ff;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  }
+
+</style>
+<script>
+  window.isGameReady = false;
+  window.pendingGameMode = null;
+
+  window.handleCardSelect = function(card, mode) {
+    if (card) {
+      document.querySelectorAll('.mode-choice-card').forEach(function(c) { c.classList.remove('selected'); });
+      card.classList.add('selected');
+      var btn = card.querySelector('.mode-choice-btn');
+      if (btn) btn.textContent = '✓ SEÇİLDİ · BAŞLATILIYOR...';
+    }
+    if (mode === 'garage') {
+      window.toggleGarage();
+    } else {
+      window.setGameMode(mode, true);
+    }
+  };
+
+  window.setGameMode = function(mode, close) {
+    if (window.__realSetGameMode) {
+      window.__realSetGameMode(mode, close);
+    } else {
+      window.pendingGameMode = { mode: mode, close: close };
+      var modal = document.getElementById('mode-select-modal');
+      if (modal && close) modal.classList.add('closing');
+    }
+  };
+
+  window.closeModeModal = function() {
+    var m = document.getElementById('mode-select-modal');
+    if (m) {
+      m.classList.add('closing');
+      setTimeout(function() {
+        m.classList.remove('open');
+        m.classList.remove('closing');
+      }, 160);
+    }
+    if (window.__realCloseModeModal) window.__realCloseModeModal();
+  };
+
+  window.openModeModal = function() {
+    if (window.__realOpenModeModal) window.__realOpenModeModal();
+    else {
+      var m = document.getElementById('mode-select-modal');
+      if (m) m.classList.add('open');
+    }
+  };
+
+  window.toggleGarage = function() {
+    if (window.__realToggleGarage) window.__realToggleGarage();
+    else window.pendingGameMode = { mode: 'garage', close: true };
+  };
+
+  window.addEventListener('touchstart', function() {
+    var tc = document.getElementById('touch-controls');
+    if (tc) tc.style.display = 'block';
+  }, { once: true });
+</script>
+</head>
+<body>
+<div id="app"><canvas id="cv"></canvas></div>
+<canvas id="rain-canvas"></canvas>
+<div id="crosshair"><div class="dot"></div></div>
+
+<div id="race-hud">
+  <div id="lap-display">TUR <span id="lap-num">1</span> / 3</div>
+  <div id="stage-display" class="stage-tag stage-1">ETAP 1: SAF SÜRÜŞ & RAMMING (SİLAHLAR KİLİTLİ)</div>
+  <div id="time-display"><span id="lap-time">00:00.0</span> &middot; <small>EN İYİ: <span id="best-time">--:--.-</span></small></div>
+</div>
+
+<div id="elimination-hud">
+  ☠ ELEME SAYACI: <span id="elimination-timer">45.0s</span> (SONUNCU İMHA EDİLİR!)
+</div>
+
+
+<!-- OYUN MODU DEĞİŞTİRME BARI (ÜST MERKEZ) -->
+<div id="game-mode-hud">
+  <button id="btn-mode-deathrace" class="mode-pill-btn active combat" onclick="setGameMode('deathrace')">
+    <span>💀</span> ÖLÜM YARIŞI
+  </button>
+  <button id="btn-mode-peaceful" class="mode-pill-btn" onclick="setGameMode('peaceful')">
+    <span>🕊️</span> BARIŞÇIL TEST
+  </button>
+  <button id="btn-open-garage" class="mode-pill-btn garage-btn" onclick="toggleGarage()" title="Garaj & Yükseltmeler [G]">
+    <span>🛠️</span> GARAJ [G]
+  </button>
+  <button id="btn-open-audio" class="mode-pill-btn audio-btn" onclick="toggleAudioModal()" title="Ses & Müzik Ayarları [J]">
+    <span id="top-audio-icon">🔊</span> SES
+  </button>
+  <button id="btn-open-mode-modal" class="mode-pill-settings" onclick="openModeModal()" title="Oyun Modunu Değiştir">
+    ⚙️
+  </button>
+</div>
+
+<!-- OYUN BAŞLATMA / MOD SEÇİM PENCERESİ -->
+<div id="mode-select-modal" class="open">
+  <div class="mode-modal-card">
+    <div class="mode-modal-tag">TERMINAL ISLAND ARENA</div>
+    <h2 class="mode-modal-title">🏁 OYUN MODUNU SEÇİN</h2>
+    <p class="mode-modal-desc">Yarışa nasıl başlamak istersiniz? Yarış esnasında üst bardan veya <kbd class="mode-kbd">P</kbd> tuşuyla anında değiştirebilirsiniz.</p>
+
+    <div class="mode-cards-grid">
+      <!-- 1: Klasik Ölüm Yarışı -->
+      <div class="mode-choice-card" onclick="handleCardSelect(this, 'deathrace')">
+        <div class="mode-choice-icon">💀</div>
+        <div class="mode-choice-title">ÖLÜM YARIŞI</div>
+        <div class="mode-choice-badge combat">TAM SAVAŞ & ELEME</div>
+        <p class="mode-choice-desc">
+          Tüm rakipler, minigunlar ve The Dreadnought aktiftir. Roket çatışmaları, zırh parçalanmaları ve 45 saniyelik eleme sayacı devrededir.
+        </p>
+        <button type="button" class="mode-choice-btn btn-combat">BU MODLA BAŞLA</button>
+      </div>
+
+      <!-- 2: Barışçıl Test & Keşif Modu -->
+      <div class="mode-choice-card recommended" onclick="handleCardSelect(this, 'peaceful')">
+        <div class="mode-choice-icon">🕊️</div>
+        <div class="mode-choice-title">BARIŞÇIL TEST MODU</div>
+        <div class="mode-choice-badge peaceful">HİÇ KİMSE VURMAZ · ÖLÜMSÜZ</div>
+        <p class="mode-choice-desc">
+          <b>Hiçbir araç veya kule sana ateş etmez, seni vuramaz!</b> Hasar almazsın (Ölümsüzlük). Yeni 18 virajlı pisti, virajları ve kısayolları özgürce test et.
+        </p>
+        <button type="button" class="mode-choice-btn btn-peaceful">BARIŞÇIL MODLA BAŞLA</button>
+      </div>
+    
+      <!-- 3: Weyland Atölyesi & Garaj -->
+      <div class="mode-choice-card" onclick="handleCardSelect(this, 'garage')" style="border-color:rgba(255,204,68,0.5)">
+        <div class="mode-choice-icon">🛠️</div>
+        <div class="mode-choice-title">WEYLAND ATÖLYESİ</div>
+        <div class="mode-choice-badge" style="background:#ffcc44;color:#111">ÖZELLEŞTİRME & SİLAH</div>
+        <p class="mode-choice-desc">
+          Yarışa başlamadan önce Frankenstein'ı 360° incele, V8 motoru güçlendir, mühimmat tipini seç, jant bıçakları ve koçbaşı tak!
+        </p>
+        <button type="button" class="mode-choice-btn" style="background:#ffcc44;color:#111">GARAJA GİR [G]</button>
+      </div>
+
+    </div>
+
+    <div class="mode-modal-footer">
+      <span>🎮 İpucu: Klavye <kbd class="mode-kbd">P</kbd> tuşuyla istediğin an ateşkesi açıp kapatabilirsin.</span>
+      <button onclick="closeModeModal()" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#ccc;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer">Kapat ✕</button>
+    </div>
+  </div>
+</div>
+
+
+<div id="boss-hud">
+  <div id="boss-label">☠ THE DREADNOUGHT ☠ &middot; <span id="boss-hp-txt">500 HP</span></div>
+  <div id="boss-bar-bg"><div id="boss-fill"></div></div>
+</div>
+
+<div id="radio-box" class="case">
+  <div id="radio-head"><span class="radio-dot"></span> <span id="radio-speaker-label">TELSİZ &middot; CASE</span></div>
+  <div id="radio-text">"Gaza bas Frankenstein, Joe peşimizde!"</div>
+</div>
+
+
+<div id="radar-hud">
+  <div id="radar-title"><span id="radar-dot"></span> RADAR &middot; TERMINAL ISLAND</div>
+  <canvas id="radar-canvas" width="180" height="135"></canvas>
+</div>
+<div id="ratings-box">
+  <div id="live-tag"><span id="live-dot"></span> WEYLAND TV CANLI</div>
+  <div id="viewer-count"><span id="viewers-val">14,250,000</span></div>
+  <div id="viewer-label">KÜRESEL İZLEYİCİ &middot; PUAN: <span id="currency-val" style="color:#2ecc71">150.000</span></div>
+  <div id="position-badge"><span id="pos-val">1</span>. SIRA</div>
+</div>
+
+<div id="rivals-hud">
+  <div class="rival-card" id="card-player">
+    <div class="rival-head"><span>FRANKENSTEIN</span><span id="player-hp-txt">100%</span></div>
+    <div class="rival-bar"><div class="rival-fill" id="player-rival-fill" style="background:#2ecc71;width:100%"></div></div>
+  </div>
+  <div class="rival-card" id="card-ai0">
+    <div class="rival-head"><span>M.G. JOE</span><span id="ai0-hp-txt">100%</span></div>
+    <div class="rival-bar"><div class="rival-fill" id="ai0-rival-fill" style="width:100%"></div></div>
+  </div>
+  <div class="rival-card" id="card-ai1">
+    <div class="rival-head"><span>GRIMM</span><span id="ai1-hp-txt">100%</span></div>
+    <div class="rival-bar"><div class="rival-fill" id="ai1-rival-fill" style="width:100%"></div></div>
+  </div>
+  <div class="rival-card" id="card-ai2">
+    <div class="rival-head"><span>14K</span><span id="ai2-hp-txt">100%</span></div>
+    <div class="rival-bar"><div class="rival-fill" id="ai2-rival-fill" style="width:100%"></div></div>
+  </div>
+  <div class="rival-card" id="card-ai3">
+    <div class="rival-head"><span>PACHENKO</span><span id="ai3-hp-txt">100%</span></div>
+    <div class="rival-bar"><div class="rival-fill" id="ai3-rival-fill" style="width:100%"></div></div>
+  </div>
+</div>
+
+<!-- TAKEDOWN PICTURE-IN-PICTURE (PIP) KÖŞE KAMERA EKRANI -->
+<div id="takedown-pip-container">
+  <div class="pip-header">
+    <span class="pip-rec-dot">● REC</span>
+    <span id="pip-victim-title">HEDEF İMHA EDİLDİ</span>
+    <span class="pip-cam-id">DRONE-03</span>
+  </div>
+  <canvas id="pip-canvas" width="280" height="158"></canvas>
+  <div class="pip-scanlines"></div>
+  <div class="pip-footer">
+    <span>WEYLAND TV // CANLI YAYIN</span>
+    <span class="pip-pts">+65.000 PTS</span>
+  </div>
+</div>
+
+<div id="banner"></div>
+<div id="buff-box"></div>
+
+<!-- NEMESIS RAKİP KİLİTLENME UYARISI -->
+<div id="nemesis-hud" style="display:none;">
+  <span class="nemesis-icon">⚠️</span> <span id="nemesis-text">NEMESIS KİLİTLENDİ: M.G. JOE İNTİKAM ARIYOR!</span>
+</div>
+
+<!-- FABRİKA PİT ALANI BİLDİRİMİ -->
+<div id="pit-hud" style="display:none;">
+  <span>🟢</span> PİT ALANI: ONARIM & MÜHİMMAT İKMALİ YAPILIYOR...
+</div>
+
+<!-- TOMBSTONE ARKA ZIRH BARI -->
+<div id="tombstone-bar"><div id="tombstone-fill"></div><span id="tombstone-text">TOMBSTONE %100 [T]</span></div>
+
+<!-- ADADAN KAÇIŞ / İSYAN ZAFER MODALI -->
+<div id="escape-victory-modal" style="position:absolute;inset:0;background:rgba(10,12,18,0.96);display:none;align-items:center;justify-content:center;z-index:400">
+  <div style="background:linear-gradient(145deg,#121824,#1c2638);border:2px solid #2ecc71;border-radius:12px;padding:32px;max-width:560px;text-align:center;color:#fff;box-shadow:0 0 50px rgba(46,204,113,0.6)">
+    <div style="font-size:48px;margin-bottom:8px">🗽💥🌊</div>
+    <div style="font-size:12px;font-weight:900;letter-spacing:2px;color:#2ecc71;margin-bottom:6px">TERMINAL ISLAND DİRENİŞİ ZAFERLE BİTTİ</div>
+    <h2 style="font-size:28px;font-weight:900;margin:0 0 12px 0;letter-spacing:1px;color:#fff">ADADAN KAÇIŞ BAŞARILI!</h2>
+    <p style="font-size:13px;line-height:1.6;color:#cbd5e0;margin-bottom:20px">
+      Frankenstein cezaevi ablukasını parçaladı, Dreadnought barikatını aştı ve limandaki kargo gemisine atlayarak özgürlüğüne kavuştu!
+    </p>
+    <div style="font-size:17px;font-weight:900;color:#ffcc44;margin-bottom:24px">KAZANILAN ÖDÜL: +500.000 PTS & 25.000.000 İZLEYİCİ</div>
+    <button onclick="location.reload()" style="background:#2ecc71;color:#111;font-weight:900;border:none;padding:12px 34px;border-radius:8px;font-size:14px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 15px rgba(46,204,113,0.5)">YENİDEN BAŞLA</button>
+  </div>
+</div>
+
+
+<!-- RÜZGAR KORİDORU (SLIPSTREAM) HUD -->
+<div id="slipstream-hud" style="display:none;">
+  ⚡ RÜZGAR KORİDORU &middot; SLIPSTREAM BOOST (+25% HIZ)
+</div>
+
+<!-- KELLE AVI (BOUNTY) HUD -->
+<div id="bounty-hud" style="display:none;">
+  🎯 KELLE AVI: <span id="bounty-name">M.G. JOE</span> (+100.000 PTS & OVERDRIVE)
+</div>
+
+<!-- ÇOKLU TAKEDOWN COMBO HUD -->
+<div id="combo-hud" style="display:none;">
+  🔥 <span id="combo-text">DOUBLE TAKEDOWN! x2 CARNAGE</span>
+</div>
+
+<!-- ADRENALİN BULLET TIME EFEKTİ -->
+<div id="bullet-time-hud">
+  <div class="bullet-time-tag">⏱️ ADRENALİN BULLET-TIME AKTİF [F]</div>
+</div>
+
+<!-- YARIŞ SONU İSTATİSTİK & ÖDÜL MODALI -->
+<div id="post-race-modal">
+  <div class="post-race-card">
+    <div class="post-race-title">🏆 WEYLAND ÖLÜM YARIŞI RAPORU</div>
+    <div class="post-race-badge" id="post-race-mvp-title">MVP: TERMINAL ISLAND CANAVARI</div>
+    
+    <div class="stats-grid">
+      <div class="stat-item"><span class="stat-label">TOPLAM TAKEDOWN:</span><span class="stat-val" id="stat-takedowns">0</span></div>
+      <div class="stat-item"><span class="stat-label">EN YÜKSEK HIZ:</span><span class="stat-val" id="stat-max-speed">0 km/s</span></div>
+      <div class="stat-item"><span class="stat-label">KIL PAYI GEÇİŞ (NEAR MISS):</span><span class="stat-val" id="stat-nearmiss">0</span></div>
+      <div class="stat-item"><span class="stat-label">TOPLAM DRIFT PUANI:</span><span class="stat-val" id="stat-drift">0 PTS</span></div>
+      <div class="stat-item"><span class="stat-label">KAZANILAN ÖDÜL:</span><span class="stat-val" id="stat-credits">0 PTS</span></div>
+      <div class="stat-item"><span class="stat-label">ZİRVE İZLEYİCİ:</span><span class="stat-val" id="stat-viewers">0</span></div>
+    </div>
+
+    <button onclick="location.reload()" style="background:#ffcc44;color:#111;font-weight:900;border:none;padding:12px 36px;border-radius:6px;font-size:14px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 15px rgba(255,204,68,0.5)">YENİDEN YARIŞA GİR</button>
+  </div>
+</div>
+
+<div id="armor-bar"><div id="armor-fill"></div><span id="armor-text">ZIRH 100%</span></div>
+
+<div id="weapons-hud">
+  <div class="wep-slot ready" id="slot-rpg">🚀 [SağTık/K] ROKET</div>
+  <div class="wep-slot ready" id="slot-emp">⚡ [E] EMP ŞOKU</div>
+  <div class="wep-slot ready" id="slot-mine">💣 [B] MAYIN</div>
+  <div class="wep-slot ready" id="slot-oil">🛢️ [Q] YAĞ</div>
+  <div class="wep-slot ready" id="slot-caltrop">📌 [X] DİKEN</div>
+  <div class="wep-slot ready" id="slot-adrenaline">⏱️ [F] ODAK</div>
+  <div class="wep-slot ready" id="slot-strike">🚁 [U] HAVA SALDIRISI</div>
+  <div class="wep-slot ready" id="slot-shunt">💥 [Z/C] YAN SHUNT</div>
+</div>
+
+<div id="hud">
+  <span class="key">WASD</span> Sür &middot; 
+  <span class="key">Shift</span> Nitro &middot; 
+  <span class="key">Space</span> Drift &middot; 
+  <span class="key">Sol Tık</span> Minigun &middot; 
+  <span class="key">Sağ Tık / K</span> Roket &middot; 
+  <span class="key">E</span> EMP Şoku &middot; 
+  <span class="key">B</span> Mayın &middot; 
+  <span class="key">Q</span> Yağ &middot; 
+  <span class="key">X</span> Diken &middot; 
+  <span class="key">Z / C</span> Yan Darbe &middot; 
+  <span class="key">F</span> Adrenalin &middot; 
+  <span class="key">T</span> Tombstone &middot; 
+  <span class="key">V</span> Arka Görüş &middot; 
+  <span class="key">N</span> Kamera Modu &middot; 
+  <span class="key">U</span> Hava Saldırısı &middot; 
+  <span class="key">G</span> Garaj &middot; 
+  <span class="key">J</span> Ses &middot; 
+  <span class="key">M</span> Müzik &middot; 
+  <span class="key">H</span> Hava &middot; 
+  <span class="key">P</span> Ateşkes &middot; 
+  <span class="key">R</span> Sıfırla<br>
+  <span id="dbg"></span>
+</div>
+
+<div id="nitro-bar"><div id="nitro-fill"></div><span id="nitro-text">NITRO %100</span></div>
+<div id="ammo-bar"><div id="ammo-fill"></div></div>
+<div id="speed"><span id="spd">0</span><small> km/s</small></div>
+
+<!-- SES AYARLARI MODALI -->
+<div id="audio-modal" onclick="if(event.target === this) closeAudioModal()">
+  <div class="audio-panel">
+    <div class="audio-head">
+      <div class="audio-title"><span>🔊</span> SES & MÜZİK AYARLARI</div>
+      <button class="audio-close-btn" onclick="closeAudioModal()" title="Kapat">✕</button>
+    </div>
+    <div style="font-size:11px;opacity:0.75;margin-bottom:14px;color:#a0b0c0">
+      Terminal Island Ses Kanalları, Motor ve Efekt Mikseri (Ayarlar otomatik kaydedilir)
+    </div>
+
+    <!-- 1. GENEL SES -->
+    <div class="audio-row">
+      <div class="audio-row-top">
+        <span class="audio-label"><span>🔊</span> ANA SES SEVİYESİ (MASTER VOLUME)</span>
+        <span class="audio-val" id="val-audio-master">85%</span>
+      </div>
+      <div class="audio-slider-wrap">
+        <input type="range" min="0" max="100" value="85" class="audio-slider" id="slider-audio-master" oninput="setAudioVolume('master', this.value)">
+        <button class="audio-btn-sm" id="btn-audio-mute" onclick="toggleAudioMute()">🔇 SUSTUR</button>
+      </div>
+    </div>
+
+    <!-- 2. EFEKT SESLERİ -->
+    <div class="audio-row">
+      <div class="audio-row-top">
+        <span class="audio-label"><span>💥</span> EFEKT SESLERİ (SFX - SİLAH, PATLAMA, DARBE)</span>
+        <span class="audio-val" id="val-audio-sfx">90%</span>
+      </div>
+      <div class="audio-slider-wrap">
+        <input type="range" min="0" max="100" value="90" class="audio-slider" id="slider-audio-sfx" oninput="setAudioVolume('sfx', this.value)">
+        <button class="audio-btn-sm" onclick="testAudioSound('sfx')">💥 TEST ET</button>
+      </div>
+    </div>
+
+    <!-- 3. MOTOR SESİ -->
+    <div class="audio-row">
+      <div class="audio-row-top">
+        <span class="audio-label"><span>🏎️</span> V8 KASAP MOTORU SESİ (ENGINE ROAR)</span>
+        <span class="audio-val" id="val-audio-engine">75%</span>
+      </div>
+      <div class="audio-slider-wrap">
+        <input type="range" min="0" max="100" value="75" class="audio-slider" id="slider-audio-engine" oninput="setAudioVolume('engine', this.value)">
+        <button class="audio-btn-sm" id="btn-audio-engine" onclick="toggleEngineSound()">🏎️ DEVREDE</button>
+      </div>
+    </div>
+
+    <!-- 4. METAL MÜZİK -->
+    <div class="audio-row">
+      <div class="audio-row-top">
+        <span class="audio-label"><span>🎵</span> ENDÜSTRİYEL METAL MÜZİK (130 BPM)</span>
+        <span class="audio-val" id="val-audio-music">65%</span>
+      </div>
+      <div class="audio-slider-wrap">
+        <input type="range" min="0" max="100" value="65" class="audio-slider" id="slider-audio-music" oninput="setAudioVolume('music', this.value)">
+        <button class="audio-btn-sm" id="btn-audio-music" onclick="toggleAudioMusic()">🎵 AÇIK [M]</button>
+      </div>
+    </div>
+
+    <!-- 5. TELSİZ & ANONS -->
+    <div class="audio-row">
+      <div class="audio-row-top">
+        <span class="audio-label"><span>📻</span> TELSİZ & ANONS (RADIO / DIALOGUE)</span>
+        <span class="audio-val" id="val-audio-voice">85%</span>
+      </div>
+      <div class="audio-slider-wrap">
+        <input type="range" min="0" max="100" value="85" class="audio-slider" id="slider-audio-voice" oninput="setAudioVolume('voice', this.value)">
+        <button class="audio-btn-sm" onclick="testAudioSound('voice')">📻 TELSİZ TEST</button>
+      </div>
+    </div>
+
+    <div class="audio-footer">
+      <button class="btn-audio-reset" onclick="resetAudioDefaults()">🔄 VARSAYILANLAR</button>
+      <button class="btn-audio-confirm" onclick="closeAudioModal()">KAYDET & PİSTE DÖN [ESC]</button>
+    </div>
+  </div>
+</div>
+
+<!-- GARAJ & YÜKSELTMELER MODALI -->
+<div id="garage-modal">
+
+  <!-- Sol Araç Canlı İstatistik Kartı -->
+  <div id="garage-stats-card">
+    <div class="stat-header">
+      <span class="stat-car-name">FRANKENSTEIN V8</span>
+      <span class="stat-car-class">ZIRHLI GLADYATÖR</span>
+    </div>
+    <div class="stat-row">
+      <div class="stat-row-top">
+        <span class="stat-name">⚡ AZAMİ HIZ</span>
+        <span class="stat-val" id="stat-val-speed">245 KM/S</span>
+      </div>
+      <div class="stat-bar-track"><div class="stat-bar-fill" id="stat-bar-speed" style="width:65%"></div></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-row-top">
+        <span class="stat-name">🛡️ GÖVDE ZIRHI</span>
+        <span class="stat-val" id="stat-val-armor">100 HP</span>
+      </div>
+      <div class="stat-bar-track"><div class="stat-bar-fill" id="stat-bar-armor" style="width:42%"></div></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-row-top">
+        <span class="stat-name">🔥 ATEŞ GÜCÜ</span>
+        <span class="stat-val" id="stat-val-firepower">45 DPS (.50 CAL)</span>
+      </div>
+      <div class="stat-bar-track"><div class="stat-bar-fill" id="stat-bar-firepower" style="width:40%"></div></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-row-top">
+        <span class="stat-name">🚀 ROKET SALVOSU</span>
+        <span class="stat-val" id="stat-val-rockets">2X SALVO</span>
+      </div>
+      <div class="stat-bar-track"><div class="stat-bar-fill" id="stat-bar-rockets" style="width:33%"></div></div>
+    </div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.15);font-size:10px;color:#888;display:flex;justify-content:space-between">
+      <span>AĞIRLIK: 1,750 KG (AWD)</span>
+      <span style="color:#2ecc71">LİFT: AKTİF</span>
+    </div>
+  </div>
+
+  <!-- 3D Orbit İnceleme İpucu -->
+  <div id="garage-orbit-hint">
+    <span>🖱️</span>
+    <span>Sol alanda fareyle basılı tutup sürükleyerek aracı 360&deg; inceleyin &middot; Tekerlekle yakınlaşın</span>
+  </div>
+
+  <!-- Alt Kamera Açısı & Test Barı -->
+  <div id="garage-bottom-bar">
+    <button class="g-view-btn active" id="btn-preset-overview" onclick="setGarageCameraPreset('overview')">🚗 GENEL</button>
+    <button class="g-view-btn" id="btn-preset-weapons" onclick="setGarageCameraPreset('weapons')">🔫 SİLAHLAR</button>
+    <button class="g-view-btn" id="btn-preset-tombstone" onclick="setGarageCameraPreset('tombstone')">🛡️ MEZAR TAŞI</button>
+    <button class="g-view-btn" id="btn-preset-engine" onclick="setGarageCameraPreset('engine')">⚙️ V8 MOTOR</button>
+    <button class="g-view-btn" id="btn-preset-wheels" onclick="setGarageCameraPreset('wheels')">🛞 JANT & ZIRH</button>
+    <button class="g-view-btn" id="btn-turntable-toggle" onclick="toggleGarageTurntable()">🔄 DÖNDÜR: AÇIK</button>
+    <button class="g-view-btn rev-btn" onclick="triggerTestEngineRev()">🔊 GAZA BAS (REV)</button>
+  </div>
+
+  <div class="garage-panel">
+    <div class="garage-title">
+      <span>WEYLAND MOTORWORKS &middot; ATÖLYE</span>
+      <span style="font-size:14px;color:#2ecc71"><span id="garage-credits">150.000</span> PTS</span>
+    </div>
+    <div class="garage-subtitle">Frankenstein'ı özelleştir: boya, jant bıçakları, tamponlar, tepe lambası ve ses ayarları!</div>
+
+    <!-- Sekmeler -->
+    <div class="garage-tabs">
+      <button class="garage-tab active" id="tab-btn-paint" onclick="switchGarageTab('paint')">🎨 BOYA & GRAFİTİ</button>
+      <button class="garage-tab" id="tab-btn-bodykits" onclick="switchGarageTab('bodykits')">⚙️ GÖVDE & JANTLAR</button>
+      <button class="garage-tab" id="tab-btn-performance" onclick="switchGarageTab('performance')">🚀 PERFORMANS & SİLAH</button>
+      <button class="garage-tab" id="tab-btn-match" onclick="switchGarageTab('match')">🏁 YARIŞ AYARLARI</button>
+      <button class="garage-tab" id="tab-btn-audio" onclick="switchGarageTab('audio')">🔊 SES AYARLARI</button>
+    </div>
+
+    <!-- SEKME 1: BOYA & GRAFİTİ -->
+    <div class="tab-pane active" id="tab-pane-paint">
+      <div class="custom-section">
+        <div class="custom-title">🎨 DİSTOPİK GÖVDE BOYASI (SKINS)</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="skin-classic_black" onclick="applyCarSkin('classic_black')">
+            <div class="skin-swatch" style="background:#18181a;box-shadow:inset 0 0 4px #000"></div>
+            <div class="custom-card-title">ÖLÜM MELEĞİ</div>
+            <div class="custom-card-desc">Mat Titanyum Siyah</div>
+          </div>
+          <div class="custom-card" id="skin-blood_carnage" onclick="applyCarSkin('blood_carnage')">
+            <div class="skin-swatch" style="background:linear-gradient(45deg,#8b0000,#ff2200)"></div>
+            <div class="custom-card-title">KAN BANYOSU</div>
+            <div class="custom-card-desc">Gore Kan Kırmızı</div>
+          </div>
+          <div class="custom-card" id="skin-desert_scorpion" onclick="applyCarSkin('desert_scorpion')">
+            <div class="skin-swatch" style="background:linear-gradient(45deg,#7a5c29,#cba358)"></div>
+            <div class="custom-card-title">ÇÖL AKREBİ</div>
+            <div class="custom-card-desc">Paslı Kum Kamuflajı</div>
+          </div>
+          <div class="custom-card" id="skin-weyland_enforcer" onclick="applyCarSkin('weyland_enforcer')">
+            <div class="skin-swatch" style="background:linear-gradient(45deg,#dcdde1,#f1c40f)"></div>
+            <div class="custom-card-title">WEYLAND GÜVENLİK</div>
+            <div class="custom-card-desc">Platin & İkaz Şeridi</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">☠️ YARIŞ GRAFİTİSİ & ÇIKARTMALAR (LIVERY)</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="decal-none" onclick="applyDecal('none')">
+            <div class="custom-card-title">SADE</div>
+            <div class="custom-card-desc">Çıkartmasız metal gövde</div>
+          </div>
+          <div class="custom-card" id="decal-skull" onclick="applyDecal('skull')">
+            <div class="custom-card-title">KURUKAFALIK</div>
+            <div class="custom-card-desc">Kaputta kurukafa & kemik</div>
+          </div>
+          <div class="custom-card" id="decal-number1" onclick="applyDecal('number1')">
+            <div class="custom-card-title">#1 FRANKENSTEIN</div>
+            <div class="custom-card-desc">Yarış no & cezaevi barkodu</div>
+          </div>
+          <div class="custom-card" id="decal-kill_marks" onclick="applyDecal('kill_marks')">
+            <div class="custom-card-title">KAN ÇENTİKLERİ</div>
+            <div class="custom-card-desc">Kapıda av çentikleri</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+
+    <!-- SEKME 2: GÖVDE & JANTLAR -->
+    <div class="tab-pane" id="tab-pane-bodykits">
+      <div class="custom-section">
+        <div class="custom-title">⚔️ DÖNEN JANT BIÇAKLARI (WHEEL GRINDERS)</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="blades-none" onclick="applyWheelBlades('none')">
+            <div class="custom-card-title">STANDART JANT</div>
+            <div class="custom-card-desc">Bıçaksız jant kapağı</div>
+          </div>
+          <div class="custom-card" id="blades-ben_hur" onclick="applyWheelBlades('ben_hur')">
+            <div class="custom-card-title">BEN-HUR ÇELİK BIÇAK</div>
+            <div class="custom-card-desc">Yan sürtmede zırh doğrar!</div>
+          </div>
+          <div class="custom-card" id="blades-sawblade" onclick="applyWheelBlades('sawblade')">
+            <div class="custom-card-title">ROTARY TESTERE</div>
+            <div class="custom-card-desc">Dişli daire testere jantı</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">🛡️ ÖN TAMPON / MAHMUZ KİTİ (BUMPERS)</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="bumper-standard" onclick="applyBumperKit('standard')">
+            <div class="custom-card-title">STANDART IZGARA</div>
+            <div class="custom-card-desc">Klasik çelik burun</div>
+          </div>
+          <div class="custom-card" id="bumper-twin_spikes" onclick="applyBumperKit('twin_spikes')">
+            <div class="custom-card-title">ÇİFT SİVRİ MIZRAK</div>
+            <div class="custom-card-desc">+%40 önden delme hasarı</div>
+          </div>
+          <div class="custom-card" id="bumper-cowcatcher" onclick="applyBumperKit('cowcatcher')">
+            <div class="custom-card-title">TİTANYUM V-KOÇBAŞI</div>
+            <div class="custom-card-desc">Ağır kaza direnci</div>
+          </div>
+          <div class="custom-card" id="bumper-grate" onclick="applyBumperKit('grate')">
+            <div class="custom-card-title">YIKIM KAFESİ</div>
+            <div class="custom-card-desc">Kafesli çelik bariyer</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">🚨 TAVAN EKLENTİSİ (ROOF KITS)</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="roof-none" onclick="applyRoofKit('none')">
+            <div class="custom-card-title">STANDART TAVAN</div>
+            <div class="custom-card-desc">Sade tavan</div>
+          </div>
+          <div class="custom-card" id="roof-strobe" onclick="applyRoofKit('strobe')">
+            <div class="custom-card-title">CEZAEVİ TEPE LAMBASI</div>
+            <div class="custom-card-desc">Dönen mavi/kırmızı flaşör</div>
+          </div>
+          <div class="custom-card" id="roof-safari" onclick="applyRoofKit('safari')">
+            <div class="custom-card-title">SAFARI LED BAR</div>
+            <div class="custom-card-desc">Dörtlü güçlü projektör</div>
+          </div>
+          <div class="custom-card" id="roof-cage" onclick="applyRoofKit('cage')">
+            <div class="custom-card-title">TAVAN KAFESİ</div>
+            <div class="custom-card-desc">Takla koruma demiri</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">🔥 NİTRO ALEV RENGİ (NITRO FLAMES)</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="flame-cyan" onclick="applyNitroFlame('cyan')">
+            <div class="custom-card-title" style="color:#00e1ff">NEON CYAN</div>
+            <div class="custom-card-desc">Standart mavi alev</div>
+          </div>
+          <div class="custom-card" id="flame-fire" onclick="applyNitroFlame('fire')">
+            <div class="custom-card-title" style="color:#ff4400">CEHENNEM ATEŞİ</div>
+            <div class="custom-card-desc">Kızıl kor alev</div>
+          </div>
+          <div class="custom-card" id="flame-purple" onclick="applyNitroFlame('purple')">
+            <div class="custom-card-title" style="color:#b026ff">PLAZMA MORU</div>
+            <div class="custom-card-desc">Yüksek oktanlı mor</div>
+          </div>
+          <div class="custom-card" id="flame-acid" onclick="applyNitroFlame('acid')">
+            <div class="custom-card-title" style="color:#2ecc71">TOKSİK YEŞİL</div>
+            <div class="custom-card-desc">Radyoaktif asit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+
+    <!-- SEKME 3: PERFORMANS & SİLAHLAR -->
+    <div class="tab-pane" id="tab-pane-performance">
+      <div class="garage-grid">
+        <div class="upgrade-card" onclick="upgradeItem('engine')">
+          <div class="upgrade-head"><span>⚡ SUPERCHARGED V8 MOTOR</span><span id="lvl-engine">SEVİYE 1/3</span></div>
+          <div class="upgrade-desc">Maksimum gücü ve Nitro son hızını (130 km/s) artırır.</div>
+          <div class="upgrade-cost" id="cost-engine">50.000 PTS</div>
+        </div>
+        <div class="upgrade-card" onclick="upgradeItem('armor')">
+          <div class="upgrade-head"><span>🛡️ TİTANYUM KOÇBAŞI & ZIRH</span><span id="lvl-armor">SEVİYE 1/3</span></div>
+          <div class="upgrade-desc">Maksimum zırhı 175 HP'ye çıkarır ve ön tampona çelik koçbaşı ekler.</div>
+          <div class="upgrade-cost" id="cost-armor">60.000 PTS</div>
+        </div>
+        <div class="upgrade-card" onclick="upgradeItem('gun')">
+          <div class="upgrade-head"><span>🔥 .50 CAL ALEVLİ MİNİGUN</span><span id="lvl-gun">SEVİYE 1/3</span></div>
+          <div class="upgrade-desc">Mermi kalibresini büyütür, zırh delen alevli mermiler sıkar!</div>
+          <div class="upgrade-cost" id="cost-gun">55.000 PTS</div>
+        </div>
+        <div class="upgrade-card" onclick="upgradeItem('rocket')">
+          <div class="upgrade-head"><span>🚀 ÇİFTLİ SALVO ROKET</span><span id="lvl-rocket">SEVİYE 1/3</span></div>
+          <div class="upgrade-desc">Aynı anda 2 güdümlü küme roketi fırlatır!</div>
+          <div class="upgrade-cost" id="cost-rocket">75.000 PTS</div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">🎯 MİNİGUN MÜHİMMAT TİPİ (AMMO TYPES)</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="ammo-fmj" onclick="applyAmmoType('fmj')">
+            <div class="custom-card-title">.50 CAL FMJ</div>
+            <div class="custom-card-desc">Standart yüksek hız</div>
+          </div>
+          <div class="custom-card" id="ammo-ap" onclick="applyAmmoType('ap')">
+            <div class="custom-card-title">ZIRH DELİCİ AP</div>
+            <div class="custom-card-desc">Zırh söker (+%40)</div>
+          </div>
+          <div class="custom-card" id="ammo-incendiary" onclick="applyAmmoType('incendiary')">
+            <div class="custom-card-title">ALEVLİ İZLİ</div>
+            <div class="custom-card-desc">Hedefi tutuşturur</div>
+          </div>
+          <div class="custom-card" id="ammo-acid" onclick="applyAmmoType('acid')">
+            <div class="custom-card-title">TOKSİK ASİT</div>
+            <div class="custom-card-desc">Hedefi yavaşlatır</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+
+    <!-- SEKME 4: YARIŞ AYARLARI -->
+    <div class="tab-pane" id="tab-pane-match">
+      <div class="custom-section">
+        <div class="custom-title">🤖 AI SALDIRGANLIK DÜZEYİ</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="ai-agg-normal" onclick="applyMatchSetting('aiAggression', 'normal')">
+            <div class="custom-card-title">STANDART YARIŞ</div>
+            <div class="custom-card-desc">Dengeli taktiksel sürüş</div>
+          </div>
+          <div class="custom-card" id="ai-agg-brutal" onclick="applyMatchSetting('aiAggression', 'brutal')">
+            <div class="custom-card-title" style="color:#ff3300">VAHŞİ KATLİAM</div>
+            <div class="custom-card-desc">Sürekli sıkıştırma & ramming!</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">⏱️ ELEME SAYACI MODU</div>
+        <div class="custom-grid">
+          <div class="custom-card active" id="elim-45s" onclick="applyMatchSetting('elimination', '45s')">
+            <div class="custom-card-title">STANDART (45s)</div>
+            <div class="custom-card-desc">Her 45 sn'de sonuncu elenir</div>
+          </div>
+          <div class="custom-card" id="elim-30s" onclick="applyMatchSetting('elimination', '30s')">
+            <div class="custom-card-title">HIZLI (30s)</div>
+            <div class="custom-card-desc">Hızlı tempolu katliam</div>
+          </div>
+          <div class="custom-card" id="elim-off" onclick="applyMatchSetting('elimination', 'off')">
+            <div class="custom-card-title">KAPALI</div>
+            <div class="custom-card-desc">Sadece tur yarışı</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">🛠️ TEST & HİLE MODLARI</div>
+        <div class="custom-grid">
+          <div class="custom-card" id="cheat-ceasefire" onclick="toggleAIFire()">
+            <div class="custom-card-title">ATEŞKES [P]</div>
+            <div class="custom-card-desc">AI ateşini kapat / aç</div>
+          </div>
+          <div class="custom-card" id="cheat-godmode" onclick="toggleGodMode()">
+            <div class="custom-card-title">ÖLÜMSÜZLÜK [O]</div>
+            <div class="custom-card-desc">Hasar almayı kapat / aç</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+
+        <!-- SEKME 5: SES & MÜZİK AYARLARI -->
+    <div class="tab-pane" id="tab-pane-audio">
+      <div class="custom-section">
+        <div class="custom-title">🔊 SES KANALLARI & AKUSTİK MİKSER</div>
+
+        <div class="audio-row">
+          <div class="audio-row-top">
+            <span class="audio-label"><span>🔊</span> ANA SES (MASTER)</span>
+            <span class="audio-val" id="garage-val-audio-master">85%</span>
+          </div>
+          <div class="audio-slider-wrap">
+            <input type="range" min="0" max="100" value="85" class="audio-slider" id="garage-audio-master" oninput="setAudioVolume('master', this.value)">
+          </div>
+        </div>
+
+        <div class="audio-row">
+          <div class="audio-row-top">
+            <span class="audio-label"><span>💥</span> EFEKT SESLERİ (SFX)</span>
+            <span class="audio-val" id="garage-val-audio-sfx">90%</span>
+          </div>
+          <div class="audio-slider-wrap">
+            <input type="range" min="0" max="100" value="90" class="audio-slider" id="garage-audio-sfx" oninput="setAudioVolume('sfx', this.value)">
+          </div>
+        </div>
+
+        <div class="audio-row">
+          <div class="audio-row-top">
+            <span class="audio-label"><span>🏎️</span> V8 MOTOR KÜKREMESİ</span>
+            <span class="audio-val" id="garage-val-audio-engine">75%</span>
+          </div>
+          <div class="audio-slider-wrap">
+            <input type="range" min="0" max="100" value="75" class="audio-slider" id="garage-audio-engine" oninput="setAudioVolume('engine', this.value)">
+          </div>
+        </div>
+
+        <div class="audio-row">
+          <div class="audio-row-top">
+            <span class="audio-label"><span>🎵</span> ENDÜSTRİYEL METAL MÜZİK</span>
+            <span class="audio-val" id="garage-val-audio-music">65%</span>
+          </div>
+          <div class="audio-slider-wrap">
+            <input type="range" min="0" max="100" value="65" class="audio-slider" id="garage-audio-music" oninput="setAudioVolume('music', this.value)">
+          </div>
+        </div>
+
+        <div class="audio-row">
+          <div class="audio-row-top">
+            <span class="audio-label"><span>📻</span> TELSİZ & ANONS</span>
+            <span class="audio-val" id="garage-val-audio-voice">85%</span>
+          </div>
+          <div class="audio-slider-wrap">
+            <input type="range" min="0" max="100" value="85" class="audio-slider" id="garage-audio-voice" oninput="setAudioVolume('voice', this.value)">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="audio-btn-sm" onclick="toggleAudioMute()" style="flex:1;padding:8px">🔇 SESİ SUSTUR / AÇ</button>
+          <button class="audio-btn-sm" onclick="toggleAudioMusic()" style="flex:1;padding:8px">🎵 MÜZİK AÇ / KAPAT</button>
+          <button class="audio-btn-sm" onclick="resetAudioDefaults()" style="flex:1;padding:8px">🔄 SIFIRLA</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="garage-footer">
+      <div style="font-size:11px;opacity:0.8"><span class="key">G</span> ile piste dönün. Sol alanda arabayı fareyle 360° döndürebilirsiniz.</div>
+      <button class="btn-close-garage" onclick="toggleGarage()">PİSTE DÖN [G]</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobil Dokunmatik Kontroller -->
+<div id="touch-controls">
+  <div class="touch-btn" id="btn-left">&larr;</div>
+  <div class="touch-btn" id="btn-right">&rarr;</div>
+  <div class="touch-btn" id="btn-gas">&#9650;</div>
+  <div class="touch-btn" id="btn-brake">&#9660;</div>
+  <div class="touch-btn" id="btn-fire">🔥</div>
+  <div class="touch-btn" id="btn-nitro">⚡</div>
+  <div class="touch-btn" id="btn-rpg">🚀</div>
+  <div class="touch-btn" id="btn-oil">🛢️</div>
+  <div class="touch-btn" id="btn-tombstone">🛡️</div>
+  <div class="touch-btn" id="btn-smoke">💨</div>
+</div>
+
+<script src="js/three.min.js"></script>
+<script src="js/cannon-es.global.js"></script>
+<script src="js/GLTFLoader.js"></script>
+<script src="js/models/car_body.js"></script>
+<script src="js/models/wheel.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
