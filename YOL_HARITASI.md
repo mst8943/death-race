@@ -55,13 +55,26 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 - [~] **Hava durumu sürüşü etkiler:** yağmurda tutuş −%22 (rakipler de), gecede görüş 420 m, dumanlı gün batımında tutuş −%5 ve görüş 900 m; HUD'da hava çipi.
 - [~] Fizik NaN koruması (bozulan araç son sağlam konumuna döner)
 
+## 🧩 Eklenti altyapısı & model
+- [x] `window.DR` eklenti arayüzü (olaylar, okuma/eylem API'si, garaj kilit kancası, yerleşim noktaları) — `docs/DR_API.md`
+- [~] Araç modeli v2 (Gemini) oyunda; silüet tasarım aşamasında bir tur daha iyileştirilecek
+- [x] Garaj sahnesi zeminin altındaydı (araç gökyüzüne fırlıyordu) → zemin seviyesine taşındı
+- [x] Tampon kitlerinin etkisi yoktu (kimlik uyuşmazlığı) → `BUMPER_FX`
+- [x] Boya ve rakip renkleri uygulanmıyordu → malzeme adına göre boyama
+
+## 🖥️📱 Platform (Steam + Android APK)
+- [ ] Erken platform denemesi: Electron (masaüstü) ve Capacitor (Android) ile test paketi, orta segment bir telefonda FPS ölçümü
+- [ ] Android WebView'de `speechSynthesis` güvenilir değil → telsiz için kayıtlı ses satırları ya da yalnızca yazı
+- [ ] Dokunmatik kontroller ve küçük ekran HUD'u (tasarım aşamasında)
+- [ ] Steamworks: başarımlar (Tur B kimlikleriyle birebir), bulut kayıt; Android: imzalama, ikon, mağaza sayfası (en son)
+
 ## 🏁 2. Yeni oyun modları (şimdilik atlandı)
 - [ ] Zamana karşı (rakipsiz, hayaletle, tur rekoru)
 - [ ] Hayatta kalma (tur yok, son araç kalana kadar)
 - [ ] Takedown arenası (3 dk, rakipler yeniden doğar)
 - [ ] Günlük meydan okuma (tarihe göre değişen kurallar)
 
-## 🎯 3. Hedefler ve ilerleme
+## 🎯 3. Hedefler ve ilerleme (Tur B — Gemini yazıyor: `docs/TUR_B_GEMINI.md`)
 - [ ] Sponsor görevleri (yarış başına 2-3 hedef + bonus)
 - [ ] Başarımlar (kalıcı rozetler)
 - [ ] Seviye / XP sistemi, seviyeyle açılan parçalar

@@ -416,3 +416,10 @@
 - **Garaj hatası (orijinalden):** showroom y = -350'deydi; ana zemin sonsuz `CANNON.Plane` olduğu için araç gökyüzüne fırlıyordu, garaj sahnesi hiç görünmüyordu. Garaj artık `GARAGE_POS` (-3200, 0, -3200), ayrı zemin gövdesi kaldırıldı.
 - Menüden garaja girince mod menüsü kapanır, çıkınca menüye dönülür (`garageFromMenu`); yarış başlamadan rakipler ve tur sayacı bekler.
 - Geri sayım gerçek zamanla (`realDt`) ilerler (30 FPS altında uzuyordu).
+
+## [Altyapı] DR Eklenti Arayüzü + Tur B Gemini İş Tanımı
+- `window.DR` (game.js başı): `on/off/emit` (dinleyici hataları yakalanır), `lockProvider/isLocked` (garaj kilitleri; `blockedByLock(kind,id)` tüm garaj fonksiyonlarının başında), `getState/getRaceStats/addCredits/showBanner/showRadio/format/formatTime/storage`. Olaylar: ready, raceStart, countdownGo, lapComplete, raceFinish, escape, takedown, aiDeath, playerDamaged, playerDestroyed, nearMiss, driftEnd, weaponUsed, platePickup, partLost, garagePurchase, garageCustomize, garageOpen, openProfile. Referans: `docs/DR_API.md`.
+- `ready` ve bekleyen mod başlangıcı `DOMContentLoaded`'da işlenir (eklentiler olayları kaçırmasın).
+- Yerleşim noktaları: `#sponsor-hud`, `#post-race-progress`, `#profile-root`, `#btn-profile-pause`, `#btn-profile-menu`. `js/progression.js` + `css/progression.css` boş başlangıç dosyaları (Gemini dolduracak; iş tanımı `docs/TUR_B_GEMINI.md`).
+- Tampon kitleri: `BUMPER_FX` (standard/twin_spikes/cowcatcher/grate); önceden kimlik uyuşmazlığı yüzünden etkisizdi.
+- Hayalet araç ilk göründüğünde açıklayıcı banner.

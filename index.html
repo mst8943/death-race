@@ -1179,6 +1179,8 @@
   <div id="stage-display" class="stage-tag stage-1">ETAP 1: SAF SÜRÜŞ & RAMMING (SİLAHLAR KİLİTLİ)</div>
   <div id="career-goal"></div>
   <div id="weather-chip"></div>
+  <!-- Tur B: sponsor görevleri burada gösterilir (js/progression.js doldurur) -->
+  <div id="sponsor-hud"></div>
   <div id="time-display"><span id="lap-time">00:00.0</span> &middot; <small>EN İYİ: <span id="best-time">--:--.-</span></small></div>
 </div>
 
@@ -1263,6 +1265,7 @@
 
     <div class="mode-modal-footer">
       <span>⌨ <kbd class="mode-kbd">1</kbd>–<kbd class="mode-kbd">4</kbd> ile seç · 🎮 <kbd class="mode-kbd">A</kbd> Ölüm Yarışı, <kbd class="mode-kbd">X</kbd> Kariyer · ⚔ 1. etapta silahlar kilitli, sonra plakalardan dolar</span>
+      <button id="btn-profile-menu" style="display:none;background:transparent;border:1px solid rgba(255,204,68,0.5);color:#ffcc44;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;margin-right:6px" onclick="DR.emit('openProfile', {})">📊 Profil</button>
       <button onclick="handleCardSelect(null, 'deathrace')" title="Doğrudan Ölüm Yarışı başlat" style="background:transparent;border:1px solid rgba(255,255,255,0.25);color:#ddd;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer">Hızlı başla ▶</button>
     </div>
   </div>
@@ -1401,6 +1404,8 @@
       <div class="stat-item"><span class="stat-label">ZİRVE İZLEYİCİ:</span><span class="stat-val" id="stat-viewers">0</span></div>
     </div>
 
+    <!-- Tur B: yarış sonu görev / XP / başarım özeti (js/progression.js doldurur) -->
+    <div id="post-race-progress"></div>
     <div class="result-actions">
       <button class="result-btn primary" id="post-race-next" style="display:none" onclick="pauseAction('restart')">▶ SIRADAKİ ETAP</button>
       <button class="result-btn primary" id="post-race-retry" onclick="pauseAction('restart')">🔄 TEKRAR YARIŞ</button>
@@ -1443,6 +1448,7 @@
       RT gaz · LT fren · Sol çubuk direksiyon · A el freni · B nitro · X minigun · Y roket · LB yağ · RB mayın<br>
       D-pad ↑ EMP · ↓ diken · ←/→ yan darbe · L3 odak · R3 hava saldırısı · Back kamera · Start duraklat
     </div>
+    <button class="pause-item" id="btn-profile-pause" style="display:none" onclick="DR.emit('openProfile', {})">📊 PROFİL & BAŞARIMLAR</button>
     <button class="pause-item" onclick="pauseAction('menu')">🏠 ANA MENÜ</button>
     <div class="pause-hint">İlerlemen otomatik kaydedilir · ↑↓ / D-pad ile gezin, Enter / A ile seç</div>
   </div>
@@ -2008,5 +2014,9 @@
 <script src="js/models/car_body.js"></script>
 <script src="js/models/wheel.js"></script>
 <script src="js/game.js"></script>
+<!-- Tur B (ilerleme sistemi): ayrı modül, yalnızca window.DR üzerinden bağlanır -->
+<link rel="stylesheet" href="css/progression.css">
+<div id="profile-root"></div>
+<script src="js/progression.js"></script>
 </body>
 </html>
