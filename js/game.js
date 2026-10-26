@@ -2315,11 +2315,31 @@ let shieldTimer = 0;
 let bannerTimer = 0;
 let radioTimer = 0;
 
-function showBanner(text, cssClass = '') {
- if (silentRestore) return;
+// Duyurular art arda gelince birbirini anında eziyordu; şimdi kısa bir sıraya alınıp okunabilir sürede gösterilir
+const bannerQueue = [];
+let bannerShownAt = 0;
+function displayBanner(text, cssClass) {
  bannerEl.textContent = text;
  bannerEl.className = 'show ' + cssClass;
  bannerTimer = 2.4;
+ bannerShownAt = performance.now();
+}
+function showBanner(text, cssClass = '') {
+ if (silentRestore) return;
+ if (bannerTimer > 0 && performance.now() - bannerShownAt < 1200) {
+  if (bannerEl.textContent !== text && !bannerQueue.some(b => b.text === text)) {
+   if (bannerQueue.length >= 3) bannerQueue.shift();
+   bannerQueue.push({ text, cssClass });
+  }
+  return;
+ }
+ displayBanner(text, cssClass);
+}
+function updateBannerQueue() {
+ if (bannerQueue.length && performance.now() - bannerShownAt > 1200) {
+  const b = bannerQueue.shift();
+  displayBanner(b.text, b.cssClass);
+ }
 }
 
 // speechSynthesis.getVoices()/cancel()/speak() bazı platformlarda (özellikle Windows'ta ilk çağrıda)
@@ -2518,12 +2538,43 @@ function updateStageHUD() {
   stageDisplayEl.textContent = 'ETAP 1: SAF SÜRÜŞ & RAMMING (SİLAHLAR KİLİTLİ)';
  } else if (currentStage === 2) {
   stageDisplayEl.className = 'stage-tag stage-2';
-  stageDisplayEl.textContent = 'ETAP 2: TAM SAVAŞ (SİLAHLAR & PLAKALAR AKTİF)';
+  stageDisplayEl.textContent = 'ETAP 2: TAM SAVAŞ (⚔ 🛡 ☠ PLAKALAR AKTİF)';
  } else {
   stageDisplayEl.className = 'stage-tag stage-3';
   stageDisplayEl.textContent = 'ETAP 3: THE DREADNOUGHT & KALE KAPISI KAÇIŞI';
  }
 }
+
+/* ==========================================================
+   CEPHANELİK (FİLMDEKİ GİBİ PLAKA İLE SİLAH AKTİVASYONU)
+   ==========================================================
+   1. etapta tüm silahlar kilitlidir. 2. etaptan itibaren silahlar yalnızca plakaların üzerinden
+   geçilince dolar: ⚔ Kılıç → minigun mermisi, roket, EMP · 🛡 Kalkan → yağ, mayın, diken, duman
+   (+ kalkan ve onarım) · ☠ Kafatası → tuzaklar + hava saldırısı. Rakipler de aynı kurala tabidir.
+   Barışçıl test modunda oyuncunun silahları sınırsızdır. */
+const ARMORY_CAPS = { gun: 300, rockets: 4, emp: 2, mines: 3, oil: 3, spikes: 3, smoke: 3, strike: 1 };
+const ARMORY_LABELS = { gun: 'MİNİGUN MERMİSİ', rockets: 'ROKET', emp: 'EMP', mines: 'MAYIN', oil: 'YAĞ', spikes: 'DİKEN', smoke: 'DUMAN', strike: 'HAVA SALDIRISI' };
+const ARMORY_PLATE = { gun: '⚔ KILIÇ', rockets: '⚔ KILIÇ', emp: '⚔ KILIÇ', mines: '🛡 KALKAN', oil: '🛡 KALKAN', spikes: '🛡 KALKAN', smoke: '🛡 KALKAN', strike: '☠ KAFATASI' };
+const armory = { gun: 0, rockets: 0, emp: 0, mines: 0, oil: 0, spikes: 0, smoke: 0, strike: 0 };
+let lastLockHint = 0;
+
+function weaponsUnlimited() { return currentGameMode === 'peaceful'; }
+function weaponsLocked() { return !weaponsUnlimited() && currentStage < 2; }
+function lockHint(text) {
+ const now = performance.now();
+ if (now - lastLockHint < 2500) return;
+ lastLockHint = now;
+ showBanner(text, 'buff-shield');
+}
+// Silah kullanılabilir mi? Değilse oyuncuya nedenini (kilit / boş) gösterir
+function canUseWeapon(kind) {
+ if (weaponsUnlimited()) return true;
+ if (currentStage < 2) { lockHint('🔒 1. ETAPTA SİLAHLAR KİLİTLİ · SADECE SÜRÜŞ & ÇARPIŞMA'); return false; }
+ if (armory[kind] <= 0) { lockHint(`🔒 ${ARMORY_LABELS[kind]} YOK · ${ARMORY_PLATE[kind]} PLAKASINDAN GEÇ`); return false; }
+ return true;
+}
+function consumeWeapon(kind) { if (!weaponsUnlimited()) armory[kind] = Math.max(0, armory[kind] - 1); }
+function addArmory(kind, n) { armory[kind] = Math.min(ARMORY_CAPS[kind], armory[kind] + n); }
 
 function dropTombstone() {
  if (isTombstoneDetached) return;
@@ -3402,7 +3453,7 @@ function updateGarageStatsUI() {
  const rktSalvo = upgrades.rocket >= 2 ? (upgrades.rocket >= 3 ? '4X GÜDÜMLÜ' : '3X KÜME') : '2X SALVO';
 
  const elSpd = document.getElementById('stat-val-speed');
- if (elSpd) elSpd.textContent = `${spdVal} KM/S`;
+ if (elSpd) elSpd.textContent = `${spdVal} KM/SA`;
  const barSpd = document.getElementById('stat-bar-speed');
  if (barSpd) barSpd.style.width = `${Math.min(100, (spdVal / 380) * 100)}%`;
 
@@ -3498,6 +3549,7 @@ window.isGameStarted = false;
 
 function setGameMode(mode, closeModal = false) {
  if (!isGameStarted) {
+  raceCountdown = 3.0; // yarış 3-2-1 geri sayımla başlar; bu sürede tüm araçlar frende bekler
   raceStartCredits = playerCredits;
   // Önceden tur zamanlayıcısı sayfa açılınca başlıyordu; ilk tura menüde geçen süre ekleniyordu
   lapStartTime = performance.now();
@@ -3890,6 +3942,15 @@ function spawnTireSmoke(pos) {
  });
 }
 
+function tryDropSmoke() {
+ const now = performance.now();
+ if (now - lastSmokeTime < 3000 || carHealth <= 0) return;
+ if (!canUseWeapon('smoke')) return;
+ lastSmokeTime = now;
+ consumeWeapon('smoke');
+ dropSmokeScreen();
+}
+
 function dropSmokeScreen() {
  Snd.playHiss();
  const rearPos = new T.Vector3(0, 0.3, -2.2).applyQuaternion(carGroup.quaternion).add(carGroup.position);
@@ -3948,6 +4009,11 @@ function spawnOilSlick(rearPos, owner) {
 }
 
 function deployOilSlick() {
+ const now = performance.now();
+ if (now - lastOilTime < 5000 || carHealth <= 0) return;
+ if (!canUseWeapon('oil')) return;
+ lastOilTime = now;
+ consumeWeapon('oil');
  const rearPos = new T.Vector3(0, 0.03, -2.4).applyQuaternion(carGroup.quaternion).add(carGroup.position);
  spawnOilSlick(rearPos, null);
  Snd.playHiss();
@@ -3983,7 +4049,9 @@ let lastCaltropTime = -99999;
 function fireRocket() {
  const now = performance.now();
  if (now - lastRPGTime < 4500 || carHealth <= 0) return;
+ if (!canUseWeapon('rockets')) return;
  lastRPGTime = now;
+ consumeWeapon('rockets');
 
  const podWorld = new T.Vector3();
  rocketPod.getWorldPosition(podWorld);
@@ -4554,11 +4622,12 @@ function applyAmmoEffect(ai) {
 }
 
 function shootAIBullet(ai) {
- if (ai.isDead || !aiFireEnabled) return;
+ if (ai.isDead || !aiFireEnabled || currentStage < 2 || !(ai.gunAmmo > 0)) return;
  const now = performance.now();
  const cooldown = (ai.overdriveTimer > 0 ? 70 : 130) * diffCfg().fireMul * (raceSetting('aiAggression') === 'brutal' ? 0.8 : 1);
  if (now - ai.lastShotTime < cooldown) return;
  ai.lastShotTime = now;
+ ai.gunAmmo--;
 
  const muzzlePos = new T.Vector3(0, 0, 0.55);
  ai.leftGun.root.localToWorld(muzzlePos);
@@ -4585,8 +4654,8 @@ function updateAIOpponents(dt) {
  const playerPos = chassisBody.position;
 
  for (let ai of aiOpponents) {
-  if (ai.isDead) {
-   for (let i = 0; i < 4; i++) { ai.vehicle.applyEngineForce(0, i); ai.vehicle.setBrake(50, i); }
+  if (ai.isDead || raceCountdown > 0) {
+   for (let i = 0; i < 4; i++) { ai.vehicle.applyEngineForce(0, i); ai.vehicle.setBrake(ai.isDead ? 50 : 80, i); }
    continue;
   }
 
@@ -4671,6 +4740,22 @@ function updateAIOpponents(dt) {
 
   ai.steer = Math.max(-1, Math.min(1, angleDiff * 2.0));
 
+  // Mermisi azalan rakip yakındaki aktif kılıç/kalkan plakasına yönelir (filmdeki gibi)
+  if (currentStage >= 2 && aiFireEnabled && ((ai.gunAmmo || 0) < 40 || !(ai.defense > 0))) {
+   for (const p of activationPlates) {
+    if (p.cooldown > 0 || p.type === 'skull') continue;
+    const pdx = p.x - aiPos.x, pdz = p.z - aiPos.z;
+    const pd = Math.sqrt(pdx * pdx + pdz * pdz);
+    if (pd > 80 || pd < 2) continue;
+    if ((fwd.x * pdx + fwd.z * pdz) / pd < 0.75) continue;
+    let pDiff = Math.atan2(pdx, pdz) - curAngle;
+    while (pDiff > Math.PI) pDiff -= Math.PI * 2;
+    while (pDiff < -Math.PI) pDiff += Math.PI * 2;
+    ai.steer = Math.max(-1, Math.min(1, ai.steer * 0.4 + pDiff * 1.2));
+    break;
+   }
+  }
+
   // Nemesis AI: Oyuncuya Kilitlenip Doğrudan Çarpışma Rotasına Girer
   // "Vahşi Katliam" saldırganlığında tüm rakipler yakındaki oyuncuya çarpmaya çalışır
   if (ai.isNemesis || raceSetting('aiAggression') === 'brutal') {
@@ -4746,7 +4831,7 @@ const PLAYER_TARGET = { name: 'FRANKENSTEIN', get chassisBody() { return chassis
 const _aiToPlayer = new T.Vector3();
 
 function updateAIWeapons(ai, dt, distToPlayer, aimDot, fwd) {
- if (!aiFireEnabled || raceFinished || carHealth <= 0 || ai.empStunTimer > 0) return;
+ if (!aiFireEnabled || raceFinished || carHealth <= 0 || ai.empStunTimer > 0 || currentStage < 2) return;
  if (ai.weaponTimer === undefined) ai.weaponTimer = 6 + Math.random() * 8;
  ai.weaponTimer -= dt;
  if (ai.weaponTimer > 0) return;
@@ -4757,7 +4842,8 @@ function updateAIWeapons(ai, dt, distToPlayer, aimDot, fwd) {
  _aiToPlayer.set(pPos.x - aPos.x, 0, pPos.z - aPos.z).normalize();
  const behind = fwd.x * _aiToPlayer.x + fwd.z * _aiToPlayer.z < -0.5;
 
- if (behind && distToPlayer < 35) {
+ if (behind && distToPlayer < 35 && ai.defense > 0) {
+  ai.defense--;
   const rear = new T.Vector3(0, 0.15, -2.6).applyQuaternion(ai.meshGroup.quaternion).add(ai.meshGroup.position);
   if (Math.random() < 0.5) {
    spawnMine(rear, ai);
@@ -4769,7 +4855,8 @@ function updateAIWeapons(ai, dt, distToPlayer, aimDot, fwd) {
    showBanner(`🛢️ ${ai.name} YOLA YAĞ DÖKTÜ!`, 'buff-sword');
   }
   ai.weaponTimer = cooldown * (0.8 + Math.random() * 0.4);
- } else if (diff !== 'easy' && aimDot > 0.85 && distToPlayer > 20 && distToPlayer < 90) {
+ } else if (diff !== 'easy' && ai.rockets > 0 && aimDot > 0.85 && distToPlayer > 20 && distToPlayer < 90) {
+  ai.rockets--;
   fireAIRocket(ai, fwd);
   ai.weaponTimer = cooldown * (0.8 + Math.random() * 0.4);
  } else {
@@ -5160,6 +5247,14 @@ addEventListener('keydown', e => {
   return;
  }
  const k = e.key.toLowerCase();
+ // Mod menüsü açıkken 1-4 ile mod seçimi
+ const modeModal = document.getElementById('mode-select-modal');
+ if (!isGameStarted && modeModal && modeModal.classList.contains('open') && ['1', '2', '3', '4'].includes(k)) {
+  Snd.init();
+  const modes = { '1': 'deathrace', '2': 'peaceful', '3': 'career', '4': 'garage' };
+  window.handleCardSelect(null, modes[k]);
+  return;
+ }
  KEYS[k] = true;
  Snd.init();
  handleKeyAction(k);
@@ -5170,10 +5265,7 @@ function handleKeyAction(k) {
  if (k === 'g') { toggleGarage(); }
  if (k === 'j') { toggleAudioModal(); }
  if (k === 'y') { toggleGhost(); }
- if (k === 'l') {
-  const now = performance.now();
-  if (now - lastSmokeTime > 3000) { lastSmokeTime = now; dropSmokeScreen(); }
- }
+ if (k === 'l') tryDropSmoke();
 
   if (k === 'e') { triggerEMPBlast(); }
   if (k === 'b') { deployStickyMine(); }
@@ -5192,10 +5284,7 @@ function handleKeyAction(k) {
   const modes = ['3. ŞAHIS (TPS)', 'ÖN TAMPON / HIZ', 'KOKPİT / VİZÖR', 'GERİ GÖRÜŞ'];
   showBanner(`KAMERA: ${modes[cameraMode]}`);
  }
- if (k === 'q' || k === '1') {
-  const now = performance.now();
-  if (now - lastOilTime > 5000) { lastOilTime = now; deployOilSlick(); }
- }
+ if (k === 'q' || k === '1') deployOilSlick();
  if (k === '2') {
   deploySpikeStrip();
  }
@@ -5225,10 +5314,7 @@ function bindTouchButton(id, keyName, isAction = null) {
   if (isAction === 'rpg') fireRocket();
   if (isAction === 'oil') deployOilSlick();
   if (isAction === 'tombstone') detachArmorPart('part_tombstone');
-  if (isAction === 'smoke') {
-   const now = performance.now();
-   if (now - lastSmokeTime > 3000) { lastSmokeTime = now; dropSmokeScreen(); }
-  }
+  if (isAction === 'smoke') tryDropSmoke();
  };
  const release = (e) => {
   e.preventDefault();
@@ -5255,6 +5341,26 @@ bindTouchButton('btn-smoke', null, 'smoke');
 const MAX_BRAKE = 85;
 const MAX_STEER = 0.42;
 
+// R: yalnızca oyuncu. Araç sağlamsa en yakın pist noktasına geri konur; imha olduysa
+// tam canla, parçaları yerinde olarak orada yeniden doğar. Rakipler ve yarış durumu etkilenmez.
+function respawnPlayer() {
+ if (garageModeActive || raceFinished) return;
+ if (carHealth <= 0) {
+  carHealth = 100 + (upgrades.armor - 1) * 35;
+  nitroAmount = 100;
+  shieldTimer = 0;
+  detachedParts.clear();
+  for (const key of Object.keys(MODULAR_PARTS)) {
+   const m = carGroup.getObjectByName(key);
+   if (m) m.visible = true;
+  }
+  updatePartsHUD();
+  engineFireLight.intensity = 0;
+ }
+ recoverCar();
+}
+
+// Tüm yarışı başlangıç konumlarına döndürür (artık R tuşuna bağlı değil)
 function resetCar() {
  chassisBody.position.set(0, 0.85, 0);
  chassisBody.quaternion.set(0, 0, 0, 1);
@@ -5315,7 +5421,9 @@ function shootBullet() {
  const now = performance.now();
  const cooldown = overdriveTimer > 0 ? 35 : (upgrades.gun >= 2 ? 55 : 65);
  if (now - lastShotTime < cooldown) return;
+ if (!canUseWeapon('gun')) return;
  lastShotTime = now;
+ consumeWeapon('gun');
 
  if (overdriveTimer <= 0) {
   gunHeat = Math.min(1.0, gunHeat + (upgrades.gun >= 3 ? 0.016 : 0.024));
@@ -5458,6 +5566,10 @@ function rumble(strength, ms = 120) {
 addEventListener('gamepadconnected', () => Snd.init());
 
 function updateControls(dt) {
+ if (raceCountdown > 0 && !garageModeActive) {
+  for (let i = 0; i < 4; i++) { vehicle.applyEngineForce(0, i); vehicle.setBrake(80, i); }
+  return;
+ }
  if (garageModeActive) {
   for (let i = 0; i < 4; i++) { vehicle.applyEngineForce(0, i); vehicle.setBrake(65, i); }
   return;
@@ -5465,7 +5577,7 @@ function updateControls(dt) {
 
  if (carHealth <= 0) {
   for (let i = 0; i < 4; i++) { vehicle.applyEngineForce(0, i); vehicle.setBrake(45, i); }
-  if (KEYS['r']) { resetCar(); KEYS['r'] = false; }
+  if (KEYS['r']) { respawnPlayer(); KEYS['r'] = false; }
   return;
  }
 
@@ -5647,7 +5759,7 @@ function updateControls(dt) {
  // Duman perdesi 'L' tuşuna taşındı (önceden 'E' basılı tutulunca EMP ile birlikte tetikleniyordu)
 
  if (KEYS['t']) { dropTombstone(); KEYS['t'] = false; }
- if (KEYS['r']) { resetCar(); KEYS['r'] = false; }
+ if (KEYS['r']) { respawnPlayer(); KEYS['r'] = false; }
 }
 
 /* ==========================================================
@@ -5766,7 +5878,7 @@ function updateCombosAndNearMiss(dt) {
  const pPos = chassisBody.position;
  const pSpeedKmh = chassisBody.velocity.length() * 3.6;
 
- // 1. Near Miss Kontrolü (>100 km/s hızda rakiplere çok yakın teğet geçme)
+ // 1. Near Miss Kontrolü (>100 km/sa hızda rakiplere çok yakın teğet geçme)
  if (pSpeedKmh > 95) {
   const now = performance.now();
   if (now - lastNearMissTime > 2800) {
@@ -5892,8 +6004,9 @@ let empAnimTimer = 0;
 function triggerEMPBlast() {
  const now = performance.now();
  if (now - lastEMPTime < 14000 || carHealth <= 0) return;
- 
+ if (!canUseWeapon('emp')) return;
  lastEMPTime = now;
+ consumeWeapon('emp');
  empAnimTimer = 0.55;
  empMesh.position.set(chassisBody.position.x, 0.25, chassisBody.position.z);
  empMesh.scale.set(1, 1, 1);
@@ -5938,8 +6051,9 @@ const mineMat = new T.MeshStandardMaterial({ color: '#161920', roughness: 0.4, m
 function deployStickyMine() {
  const now = performance.now();
  if (now - lastMineTime < 8000 || carHealth <= 0) return;
- 
+ if (!canUseWeapon('mines')) return;
  lastMineTime = now;
+ consumeWeapon('mines');
 
  const rearPos = new T.Vector3(0, 0.15, -2.4).applyQuaternion(carGroup.quaternion).add(carGroup.position);
  spawnMine(rearPos, null);
@@ -6034,8 +6148,9 @@ const spikeStripMat = new T.MeshStandardMaterial({ color: '#7f8c8d', roughness: 
 function deploySpikeStrip() {
  const now = performance.now();
  if (now - lastSpikeTime < 7000 || carHealth <= 0) return;
- 
+ if (!canUseWeapon('spikes')) return;
  lastSpikeTime = now;
+ consumeWeapon('spikes');
 
  const rearPos = new T.Vector3(0, 0.06, -2.6).applyQuaternion(carGroup.quaternion).add(carGroup.position);
  const sMesh = new T.Mesh(spikeStripGeo, spikeStripMat);
@@ -6137,8 +6252,9 @@ let lastAirstrikeTime = -99999;
 function callHelicopterStrike() {
  const now = performance.now();
  if (now - lastAirstrikeTime < 35000 || carHealth <= 0) return;
- 
+ if (!canUseWeapon('strike')) return;
  lastAirstrikeTime = now;
+ consumeWeapon('strike');
 
  // Lider AI'ı bul
  let leaderAI = null;
@@ -6280,12 +6396,18 @@ function showPostRaceStats(isEscape = false) {
  modal.style.display = 'flex';
 
  document.getElementById('stat-takedowns').textContent = raceStats.takedowns;
- document.getElementById('stat-max-speed').textContent = Math.round(raceStats.maxSpeed) + ' km/s';
+ document.getElementById('stat-max-speed').textContent = Math.round(raceStats.maxSpeed) + ' km/sa';
  document.getElementById('stat-nearmiss').textContent = raceStats.nearMisses;
  document.getElementById('stat-drift').textContent = Math.round(raceStats.driftScore) + ' PTS';
  document.getElementById('stat-credits').textContent = '+' + fmtTR(Math.max(0, playerCredits - raceStartCredits)) + ' PTS';
  const rankEl = document.getElementById('stat-rank');
  if (rankEl) rankEl.textContent = isEscape ? 'KAÇTI' : `${raceStats.finishRank || playerRank}. SIRA (+${fmtTR(raceStats.finishReward || 0)})`;
+ const nextBtn = document.getElementById('post-race-next');
+ const careerPassed = !!(activeCareerEvent && raceStats.careerText && raceStats.careerText.startsWith('✅'));
+ if (nextBtn) nextBtn.style.display = careerPassed ? 'inline-block' : 'none';
+ const retryBtn = document.getElementById('post-race-retry');
+ // Kariyerde etap geçildiyse "yeniden başlat" sıradaki etabı açar; ayrı "tekrar" düğmesi gizlenir
+ if (retryBtn) retryBtn.style.display = careerPassed ? 'none' : 'inline-block';
  const careerEl = document.getElementById('post-race-career');
  if (careerEl) { careerEl.textContent = raceStats.careerText || ''; careerEl.style.display = raceStats.careerText ? 'block' : 'none'; }
  document.getElementById('stat-viewers').textContent = fmtTR(currentViewers);
@@ -6300,19 +6422,28 @@ function showPostRaceStats(isEscape = false) {
 }
 window.showPostRaceStats = showPostRaceStats;
 
+function setPlateVisualActive(p, active) {
+ if (p.visualActive === active) return; // her karede renk yazmamak için
+ p.visualActive = active;
+ const col = p.type === 'sword' ? 0xff6600 : (p.type === 'shield' ? 0x00bfff : 0xe74c3c);
+ p.innerMesh.material.color.setHex(active ? col : 0x333333);
+ p.beamMesh.visible = active;
+ if (p.holoMesh) p.holoMesh.visible = active;
+ if (p.pLight) p.pLight.intensity = active ? 1.8 : 0;
+}
+
 function updateActivationPlates(dt) {
  const carP = chassisBody.position;
+ const platesLive = weaponsUnlimited() || currentStage >= 2;
 
  for (let p of activationPlates) {
+  if (!platesLive) { setPlateVisualActive(p, false); continue; } // 1. etapta plakalar sönük ve etkisiz
   if (p.cooldown > 0) {
    p.cooldown -= dt;
-   p.innerMesh.material.color.setHex(0x333333);
-   p.beamMesh.visible = false;
+   setPlateVisualActive(p, false);
    continue;
   } else {
-   const col = p.type === 'sword' ? 0xff6600 : (p.type === 'shield' ? 0x00bfff : 0xe74c3c);
-   p.innerMesh.material.color.setHex(col);
-   p.beamMesh.visible = true;
+   setPlateVisualActive(p, true);
   }
 
   const dx = carP.x - p.x;
@@ -6322,18 +6453,20 @@ function updateActivationPlates(dt) {
   if (dist < p.radius) {
    p.cooldown = 12.0;
    if (p.type === 'sword') {
-    overdriveTimer = 7.0; gunHeat = 0;
+    addArmory('gun', 150); addArmory('rockets', 2); addArmory('emp', 1);
+    overdriveTimer = 4.0; gunHeat = 0;
     Snd.playPowerup('sword');
-    showBanner('KILIÇ PLAKASI: AŞIRI ATEŞ GÜCÜ!', 'buff-sword');
+    showBanner('⚔ SİLAHLAR AKTİF: +150 MERMİ · +2 ROKET · +1 EMP', 'buff-sword');
     showRadioMessage('Kılıç aktif! Ateş hızımız iki katına çıktı, tara şunları!');
     addViewers(80000, 'KILIÇ AKTİF!');
    } else if (p.type === 'shield') {
+    addArmory('oil', 1); addArmory('mines', 1); addArmory('spikes', 1); addArmory('smoke', 1);
     shieldTimer = 9.0;
     const maxHP = 100 + (upgrades.armor - 1) * 35;
     carHealth = Math.min(maxHP, carHealth + 45);
     shieldMesh.visible = true;
     Snd.playPowerup('shield');
-    showBanner('KALKAN PLAKASI: +45 ZIRH & GÜÇ ALANI!', 'buff-shield');
+    showBanner('🛡 SAVUNMA AKTİF: +45 ZIRH · YAĞ · MAYIN · DİKEN · DUMAN', 'buff-shield');
     showRadioMessage('Kalkan devrede! Zırh onarıldı, güvenle dalabiliriz!');
     addViewers(60000, 'KALKAN AKTİF!');
    
@@ -6345,7 +6478,8 @@ function updateActivationPlates(dt) {
      // Konteyner vinci hasar alıp sarsılsın
      if (craneStructure && !craneStructure.isCollapsed) craneStructure.onHit(40);
      Snd.playImpact();
-     showBanner('SKULL TUZAĞI: FABRİKA PRESLERİ & ALEVLER TETİKLENDİ!', 'buff-sword');
+     addArmory('strike', 1);
+     showBanner('☠ TUZAKLAR TETİKLENDİ · +1 HAVA SALDIRISI [U]', 'buff-sword');
      showRadioMessage('Kafatası tuzağı tetiklendi! Arkamızdaki yol cehenneme döndü!', 'case');
      addViewers(150000, 'TUZAK TETİKLENDİ!');
     }
@@ -6360,11 +6494,14 @@ function updateActivationPlates(dt) {
    if (Math.sqrt(adx * adx + adz * adz) < p.radius) {
     p.cooldown = 12.0;
     if (p.type === 'sword') {
-     ai.overdriveTimer = 6.0;
+     ai.gunAmmo = Math.min(300, (ai.gunAmmo || 0) + 150);
+     ai.rockets = Math.min(2, (ai.rockets || 0) + 1);
+     ai.overdriveTimer = 4.0;
      showBanner(`${ai.name} KILIÇ PLAKASINI ALDI!`, 'buff-sword');
      showRadioMessage(`Dikkat! ${ai.name} kılıç plakasını aldı, saklan!`);
     } else if (p.type === 'shield') {
      ai.shieldTimer = 8.0; ai.health = Math.min(100, ai.health + 40);
+     ai.defense = Math.min(4, (ai.defense || 0) + 2);
      showBanner(`${ai.name} KALKANLA KORUNDU!`, 'buff-shield');
     } else if (p.type === 'skull') {
      triggerFlameJet(p.x - 2, p.z - 2); triggerFlameJet(p.x + 2, p.z - 2);
@@ -6398,6 +6535,7 @@ function updateActivationPlates(dt) {
   bannerTimer -= dt;
   if (bannerTimer <= 0) bannerEl.className = '';
  }
+ updateBannerQueue();
 
  if (radioTimer > 0) {
   radioTimer -= dt;
@@ -6539,6 +6677,28 @@ function triggerEscapeVictory() {
 let lastLapTxt = '';
 let lastElimTxt = '';
 let raceFinished = false;
+let raceCountdown = 0;
+let lastCountdownShown = -1;
+const countdownEl = document.getElementById('countdown');
+function updateCountdown(dt) {
+ if (raceCountdown <= 0) return;
+ raceCountdown -= dt;
+ const n = Math.ceil(raceCountdown);
+ if (n !== lastCountdownShown) {
+  lastCountdownShown = n;
+  if (countdownEl) {
+   countdownEl.textContent = n > 0 ? String(n) : 'BAŞLA!';
+   countdownEl.className = 'show' + (n > 0 ? '' : ' go');
+  }
+  if (n > 0) Snd.playCheckpoint(); else Snd.playPowerup('sword');
+ }
+ if (raceCountdown <= 0) {
+  // Tur süresi ve hayalet kaydı yeşil ışıkla başlar
+  lapStartTime = performance.now();
+  resetGhostRecording();
+  setTimeout(() => { if (countdownEl && raceCountdown <= 0) countdownEl.className = ''; }, 700);
+ }
+}
 let raceStartCredits = 150000;
 const FINISH_REWARDS = [300000, 150000, 75000, 40000, 20000];
 
@@ -6563,7 +6723,7 @@ function finishRace() {
 }
 
 function updateCheckpoints(dt) {
- if (raceFinished) return;
+ if (raceFinished || raceCountdown > 0) return;
  const carP = chassisBody.position;
  const cp = CHECKPOINTS[currentCheckpoint];
  const dx = carP.x - cp.pos.x;
@@ -6595,8 +6755,8 @@ function updateCheckpoints(dt) {
     if (lapCount === 2) {
      currentStage = 2;
      updateStageHUD();
-     showBanner('2. ETAP: SİLAHLAR DEVREDE! TAM SAVAŞ!', 'buff-sword');
-     showRadioMessage('1. Etap bitti! Silahlar açıldı Frankenstein! Tara şunları!', 'case');
+     showBanner('2. ETAP: SİLAH PLAKALARI AKTİF! ⚔ PLAKADAN GEÇ, SİLAHLAN!', 'buff-sword');
+     showRadioMessage('Plakalar açıldı Frankenstein! Kılıç plakası silah, kalkan plakası savunma verir. Üzerinden geç!', 'case');
      Snd.playPowerup('sword');
     } else if (lapCount >= 3) {
      currentStage = 3;
@@ -6740,10 +6900,45 @@ function updateRatingsAndRanks(dt) {
   }
  }
 
+ updateWeaponsHUD();
+}
+
+// Silah yuvaları: kilit (1. etap), boş (plakadan doldur), bekleme ve hazır durumları + kalan cephane
+const WEAPON_SLOTS = [
+ { kind: 'gun', icon: '🔫', key: 'SOL TIK', name: 'MİNİGUN' },
+ { kind: 'rockets', icon: '🚀', key: 'K', name: 'ROKET', cd: () => [lastRPGTime, 4500] },
+ { kind: 'emp', icon: '⚡', key: 'E', name: 'EMP', cd: () => [lastEMPTime, 14000] },
+ { kind: 'mines', icon: '💣', key: 'B', name: 'MAYIN', cd: () => [lastMineTime, 8000] },
+ { kind: 'oil', icon: '🛢️', key: 'Q', name: 'YAĞ', cd: () => [lastOilTime, 5000] },
+ { kind: 'spikes', icon: '📌', key: 'X', name: 'DİKEN', cd: () => [lastSpikeTime, 7000] },
+ { kind: 'smoke', icon: '💨', key: 'L', name: 'DUMAN', cd: () => [lastSmokeTime, 3000] },
+ { kind: 'strike', icon: '🚁', key: 'U', name: 'HAVA SALDIRISI', cd: () => [lastAirstrikeTime, 35000] },
+ { kind: null, icon: '⏱️', key: 'F', name: 'ODAK', cd: () => [lastBulletTime, 18000] },
+ { kind: null, icon: '💥', key: 'Z/C', name: 'YAN DARBE', cd: () => [lastShuntTime, 2400] }
+];
+let lastWeaponsHudHtml = '';
+function updateWeaponsHUD() {
+ const el = document.getElementById('weapons-hud');
+ if (!el) return;
  const now = performance.now();
- if (slotRPG) slotRPG.className = 'wep-slot ' + (now - lastRPGTime >= 4500 ? 'ready' : 'cooling');
- if (slotOil) slotOil.className = 'wep-slot ' + (now - lastOilTime >= 5000 ? 'ready' : 'cooling');
- if (slotCaltrop) slotCaltrop.className = 'wep-slot ' + (now - lastCaltropTime >= 5000 ? 'ready' : 'cooling');
+ const locked = weaponsLocked();
+ let html = '';
+ for (const w of WEAPON_SLOTS) {
+  let state = 'ready', count = '';
+  if (w.kind) {
+   if (locked) state = 'locked';
+   else if (!weaponsUnlimited() && armory[w.kind] <= 0) state = 'empty';
+   if (!weaponsUnlimited() && !locked) count = ` <b class="wep-count">${armory[w.kind]}</b>`;
+  }
+  if (state === 'ready' && w.cd) {
+   const [t0, dur] = w.cd();
+   if (now - t0 < dur) state = 'cooling';
+  }
+  const icon = state === 'locked' ? '🔒' : w.icon;
+  // Sabit etiketler + sayı (kullanıcı girdisi yok) — innerHTML güvenli
+  html += `<div class="wep-slot ${state}" title="${w.name} [${w.key}]">${icon} <span class="wep-key">${w.key}</span> <span class="wep-name">${w.name}</span>${count}</div>`;
+ }
+ if (html !== lastWeaponsHudHtml) { lastWeaponsHudHtml = html; el.innerHTML = html; }
 }
 
 /* ==========================================================
@@ -6813,6 +7008,8 @@ let activeCareerEvent = null;
 function careerEventIndex(ev) { return CAREER_EVENTS.indexOf(ev); }
 function startCareerEvent(ev) {
  const idx = careerEventIndex(ev);
+ const goalEl = document.getElementById('career-goal');
+ if (goalEl) { goalEl.textContent = `🏆 KARİYER ${idx + 1}/${CAREER_EVENTS.length}: ${ev.name} · HEDEF: EN AZ ${ev.needRank}.`; goalEl.style.display = 'inline-block'; }
  MAX_LAPS = ev.laps;
  const totalEl = document.getElementById('lap-total');
  if (totalEl) totalEl.textContent = ev.laps;
@@ -7739,6 +7936,7 @@ function loop(now) {
  pollGamepad();
  // Duraklatıldığında simülasyon ve çizim durur; canvas son kareyi göstermeye devam eder
  if (isPaused) { last = now; return; }
+ if (isGameStarted && !garageModeActive) updateCountdown(rawDt);
  updateAutoResolution(rawDt * 1000);
 
  // Başlangıç mod seçim penceresi açıkken ve garajda değilken:

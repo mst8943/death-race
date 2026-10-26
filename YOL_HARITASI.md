@@ -37,6 +37,17 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 - [~] **Rakipler de silah kullansın:** oyuncu arkadaysa mayın/yağ, öndeyse güdümlü roket (kolayda roket yok); bekleme süresi zorluğa ve saldırganlığa bağlı
 - [~] Rakiplerin bıraktığı yağ oyuncuyu da kaydırır (önceden oyuncu için yağ kayması hiç tanımlı değildi)
 
+- [~] **Filmdeki gibi silah aktivasyonu:** 1. etapta tüm silahlar kilitli (oyuncu + rakipler); 2. etaptan itibaren ⚔ kılıç (mermi, roket, EMP), 🛡 kalkan (yağ, mayın, diken, duman + kalkan/onarım), ☠ kafatası (tuzak + hava saldırısı) plakalarından dolar. Rakipler de plakalardan silahlanır, cephanesi azalınca plakalara yönelir. Barışçıl modda sınırsız.
+- [~] **R tuşu yalnızca oyuncuyu** en yakın pist noktasına koyar; araç imha olduysa orada tam canla yeniden doğar
+- [~] **Yarış başı 3-2-1 geri sayımı** (araçlar frende bekler, tur süresi yeşil ışıkla başlar)
+
+### Arayüz (bu turda)
+- [~] Silah yuvalarında kilit / boş / bekleme / hazır durumu ve kalan cephane
+- [~] Duyuru sırası (art arda gelen duyurular birbirini ezmiyor)
+- [~] Sonuç ekranında Tekrar yarış / Sıradaki etap / Ana menü; kaçış ekranında Tekrar yarış / Ana menü
+- [~] Kariyer hedef çipi (yarış sırasında), menüde 1-4 tuşları ile mod seçimi, "Kapat" yerine "Hızlı başla"
+- [x] Hız birimi km/s → km/sa
+
 ## 🏁 2. Yeni oyun modları
 - [ ] Zamana karşı (rakipsiz, hayaletle, tur rekoru)
 - [ ] Hayatta kalma (tur yok, son araç kalana kadar)
@@ -70,7 +81,7 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 
 ---
 
-## 📝 Kod incelemesinde fark edilen, karar bekleyen konular
-- "ETAP 1: SİLAHLAR KİLİTLİ" yazıyor ama oyuncunun ve rakiplerin silahları 1. etapta da çalışıyor.
-- **R (Sıfırla)** yalnızca oyuncuyu değil tüm rakipleri de başlangıca ışınlıyor, tur sayısı ise korunuyor.
+## 📝 Karar bekleyen konular
 - Sabit fizik adımı (sürüş hissini değiştirir, oynanarak test edilmeli).
+- Cephane miktarları ve plaka bekleme süresi (12 sn) oynanarak dengelenmeli.
+- Garaj ve ses ayarları penceresi henüz bu turdaki arayüz düzenlemesinden geçmedi.

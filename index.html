@@ -1074,6 +1074,29 @@
   @media (max-height: 820px) {
     #rivals-hud{transform:scale(0.92);transform-origin:top right}
   }
+
+  /* Geri sayım */
+  #countdown{position:fixed;top:38%;left:50%;transform:translate(-50%,-50%) scale(0.6);font-size:120px;font-weight:900;color:#ffcc44;text-shadow:0 0 40px rgba(255,180,0,0.6),0 6px 20px #000;opacity:0;pointer-events:none;z-index:130;transition:opacity 0.15s,transform 0.25s}
+  #countdown.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #countdown.go{color:#2ecc71;font-size:84px;text-shadow:0 0 40px rgba(46,204,113,0.7),0 6px 20px #000}
+
+  /* Kariyer hedefi */
+  #career-goal{display:none;margin-top:4px;font-size:10px;font-weight:900;letter-spacing:1px;color:#e0b0ff;background:rgba(60,20,80,0.75);border:1px solid #9b59b6;border-radius:4px;padding:2px 8px}
+
+  /* Silah yuvaları: kilitli / boş / bekleme / hazır + cephane */
+  #weapons-hud{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 260px)}
+  .wep-slot .wep-key{font-family:monospace;font-size:10px;opacity:0.75;background:rgba(255,255,255,0.1);padding:0 4px;border-radius:3px}
+  .wep-slot .wep-count{margin-left:2px;padding:0 5px;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-size:10px}
+  .wep-slot.locked{opacity:0.45;border-color:rgba(255,255,255,0.15);color:#9aa3ad}
+  .wep-slot.empty{opacity:0.55;border-color:rgba(231,76,60,0.5);color:#ffb3a8}
+  .wep-slot.empty .wep-count{background:rgba(231,76,60,0.4)}
+  @media (max-width: 1500px) { .wep-slot .wep-name{display:none} }
+
+  /* Sonuç ekranı düğmeleri */
+  .result-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+  .result-btn{background:rgba(255,255,255,0.06);color:#e8ebf0;border:1px solid rgba(255,255,255,0.25);font-weight:900;padding:11px 22px;border-radius:7px;font-size:13px;cursor:pointer;letter-spacing:1px}
+  .result-btn:hover{border-color:#ffcc44;color:#fff}
+  .result-btn.primary{background:#ffcc44;color:#111;border-color:#ffcc44;box-shadow:0 0 15px rgba(255,204,68,0.45)}
 </style>
 <script>
   window.isGameReady = false;
@@ -1142,6 +1165,7 @@
 <div id="race-hud">
   <div id="lap-display">TUR <span id="lap-num">1</span> / <span id="lap-total">3</span></div>
   <div id="stage-display" class="stage-tag stage-1">ETAP 1: SAF SÜRÜŞ & RAMMING (SİLAHLAR KİLİTLİ)</div>
+  <div id="career-goal"></div>
   <div id="time-display"><span id="lap-time">00:00.0</span> &middot; <small>EN İYİ: <span id="best-time">--:--.-</span></small></div>
 </div>
 
@@ -1225,8 +1249,8 @@
     </div>
 
     <div class="mode-modal-footer">
-      <span>🎮 İpucu: Klavye <kbd class="mode-kbd">P</kbd> tuşuyla istediğin an ateşkesi açıp kapatabilirsin.</span>
-      <button onclick="closeModeModal()" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#ccc;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer">Kapat ✕</button>
+      <span>⌨ <kbd class="mode-kbd">1</kbd>–<kbd class="mode-kbd">4</kbd> ile seç · 🎮 <kbd class="mode-kbd">A</kbd> Ölüm Yarışı, <kbd class="mode-kbd">X</kbd> Kariyer · ⚔ 1. etapta silahlar kilitli, sonra plakalardan dolar</span>
+      <button onclick="handleCardSelect(null, 'deathrace')" title="Doğrudan Ölüm Yarışı başlat" style="background:transparent;border:1px solid rgba(255,255,255,0.25);color:#ddd;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer">Hızlı başla ▶</button>
     </div>
   </div>
 </div>
@@ -1318,7 +1342,10 @@
       Frankenstein cezaevi ablukasını parçaladı, Dreadnought barikatını aştı ve limandaki kargo gemisine atlayarak özgürlüğüne kavuştu!
     </p>
     <div style="font-size:17px;font-weight:900;color:#ffcc44;margin-bottom:24px">KAZANILAN ÖDÜL: +500.000 PTS & 25.000.000 İZLEYİCİ</div>
-    <button onclick="location.reload()" style="background:#2ecc71;color:#111;font-weight:900;border:none;padding:12px 34px;border-radius:8px;font-size:14px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 15px rgba(46,204,113,0.5)">YENİDEN BAŞLA</button>
+    <div class="result-actions">
+      <button class="result-btn primary" style="background:#2ecc71;border-color:#2ecc71" onclick="pauseAction('restart')">🔄 TEKRAR YARIŞ</button>
+      <button class="result-btn" onclick="pauseAction('menu')">🏠 ANA MENÜ</button>
+    </div>
   </div>
 </div>
 
@@ -1353,14 +1380,18 @@
     <div class="stats-grid">
       <div class="stat-item"><span class="stat-label">FİNİŞ SIRASI:</span><span class="stat-val" id="stat-rank">-</span></div>
       <div class="stat-item"><span class="stat-label">TOPLAM TAKEDOWN:</span><span class="stat-val" id="stat-takedowns">0</span></div>
-      <div class="stat-item"><span class="stat-label">EN YÜKSEK HIZ:</span><span class="stat-val" id="stat-max-speed">0 km/s</span></div>
+      <div class="stat-item"><span class="stat-label">EN YÜKSEK HIZ:</span><span class="stat-val" id="stat-max-speed">0 km/sa</span></div>
       <div class="stat-item"><span class="stat-label">KIL PAYI GEÇİŞ (NEAR MISS):</span><span class="stat-val" id="stat-nearmiss">0</span></div>
       <div class="stat-item"><span class="stat-label">TOPLAM DRIFT PUANI:</span><span class="stat-val" id="stat-drift">0 PTS</span></div>
       <div class="stat-item"><span class="stat-label">BU YARIŞTA KAZANILAN:</span><span class="stat-val" id="stat-credits">0 PTS</span></div>
       <div class="stat-item"><span class="stat-label">ZİRVE İZLEYİCİ:</span><span class="stat-val" id="stat-viewers">0</span></div>
     </div>
 
-    <button onclick="location.reload()" style="background:#ffcc44;color:#111;font-weight:900;border:none;padding:12px 36px;border-radius:6px;font-size:14px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 15px rgba(255,204,68,0.5)">YENİDEN YARIŞA GİR</button>
+    <div class="result-actions">
+      <button class="result-btn primary" id="post-race-next" style="display:none" onclick="pauseAction('restart')">▶ SIRADAKİ ETAP</button>
+      <button class="result-btn primary" id="post-race-retry" onclick="pauseAction('restart')">🔄 TEKRAR YARIŞ</button>
+      <button class="result-btn" onclick="pauseAction('menu')">🏠 ANA MENÜ</button>
+    </div>
   </div>
 </div>
 
@@ -1378,7 +1409,8 @@
   <div class="wep-slot ready" id="slot-shunt">💥 [Z/C] YAN SHUNT</div>
 </div>
 
- <div id="pause-menu" role="dialog" aria-modal="true" aria-label="Duraklatma menüsü">
+<div id="countdown"></div>
+<div id="pause-menu" role="dialog" aria-modal="true" aria-label="Duraklatma menüsü">
   <div class="pause-card">
     <div class="pause-title"><span class="pause-icon"></span>DURAKLATILDI</div>
     <div id="pause-info"></div>
@@ -1391,7 +1423,7 @@
       <b>KLAVYE</b><br>
       W/S gaz-fren · A/D direksiyon · Space el freni · Shift nitro · Sol tık minigun · Sağ tık/K roket<br>
       E EMP · B mayın · Q yağ · X diken · Z/C yan darbe · F odak · U hava saldırısı · T tombstone · L duman<br>
-      N kamera · V geri bak · Y hayalet · G garaj · J ses · M müzik · H hava durumu · P ateşkes · R sıfırla · F1 tuş listesi<br>
+      N kamera · V geri bak · Y hayalet · G garaj · J ses · M müzik · H hava durumu · P ateşkes · R piste dön · F1 tuş listesi<br>
       <b>GAMEPAD</b><br>
       RT gaz · LT fren · Sol çubuk direksiyon · A el freni · B nitro · X minigun · Y roket · LB yağ · RB mayın<br>
       D-pad ↑ EMP · ↓ diken · ←/→ yan darbe · L3 odak · R3 hava saldırısı · Back kamera · Start duraklat
@@ -1425,14 +1457,14 @@
   <span class="key">P</span> Ateşkes &middot; 
   <span class="key">L</span> Duman &middot; 
   <span class="key">Y</span> Hayalet &middot; 
-  <span class="key">R</span> Sıfırla &middot; 
+  <span class="key">R</span> Piste dön &middot; 
   <span class="key">ESC</span> Duraklat<br>
   <span id="dbg"></span>
 </div>
 
 <div id="nitro-bar"><div id="nitro-fill"></div><span id="nitro-text">NITRO %100</span></div>
 <div id="ammo-bar"><div id="ammo-fill"></div></div>
-<div id="speed"><span id="engine-state" title="Hasar nedeniyle düşen motor gücü"></span> <span id="spd">0</span><small> km/s</small></div>
+<div id="speed"><span id="engine-state" title="Hasar nedeniyle düşen motor gücü"></span> <span id="spd">0</span><small> km/sa</small></div>
 
 <!-- SES AYARLARI MODALI -->
 <div id="audio-modal" onclick="if(event.target === this) closeAudioModal()">
@@ -1524,7 +1556,7 @@
     <div class="stat-row">
       <div class="stat-row-top">
         <span class="stat-name">⚡ AZAMİ HIZ</span>
-        <span class="stat-val" id="stat-val-speed">245 KM/S</span>
+        <span class="stat-val" id="stat-val-speed">245 KM/SA</span>
       </div>
       <div class="stat-bar-track"><div class="stat-bar-fill" id="stat-bar-speed" style="width:65%"></div></div>
     </div>
@@ -1735,7 +1767,7 @@
       <div class="garage-grid">
         <div class="upgrade-card" onclick="upgradeItem('engine')">
           <div class="upgrade-head"><span>⚡ SUPERCHARGED V8 MOTOR</span><span id="lvl-engine">SEVİYE 1/3</span></div>
-          <div class="upgrade-desc">Maksimum gücü ve Nitro son hızını (130 km/s) artırır.</div>
+          <div class="upgrade-desc">Maksimum gücü ve Nitro son hızını (130 km/sa) artırır.</div>
           <div class="upgrade-cost" id="cost-engine">50.000 PTS</div>
         </div>
         <div class="upgrade-card" onclick="upgradeItem('armor')">

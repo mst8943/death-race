@@ -393,3 +393,10 @@
 - **Yeniden başlat**: `?start=deathrace|peaceful|career` ile menüsüz başlar.
 - **Parça etkileri**: `playerDamageTakenMul()` (sol/sağ zırh +%15, tavan +%10), ön mahmuz kaybı çarpma hasarı x0.6, `healthSpeedFactor()` can %50 altında motor gücü ve azami hız düşer. AI'lara da uygulanır. HUD: `#parts-hud` çipleri + `#engine-state`.
 - **Rakip silahları** (`updateAIWeapons`): oyuncu 35 m içinde arkadaysa mayın/yağ, 20-90 m önde ve nişanlıysa güdümlü roket (kolay zorlukta yok). Bekleme: kolay 24 / normal 15 / zor 9 sn (vahşi x0.75). Rakip mayınları 0.8 sn sonra aktifleşir ve oyuncuya yapışır; rakip yağı oyuncuyu kaydırır (`updatePlayerHazards`); roketlerde `ownerBody` ile atanın kendisi vurulmaz.
+
+## [Feature] Film Tarzı Silah Aktivasyonu, R = Sadece Oyuncu, Geri Sayım, UI/UX
+- **Cephanelik** (`armory`, `canUseWeapon`, `consumeWeapon`, `addArmory`): 1. etapta tüm silahlar kilitli (`weaponsLocked`). 2. etaptan itibaren plakalar: ⚔ kılıç +150 mermi/+2 roket/+1 EMP (+4 sn overdrive), 🛡 kalkan +1 yağ/mayın/diken/duman (+kalkan, +45 zırh), ☠ kafatası tuzaklar + 1 hava saldırısı. Üst sınırlar `ARMORY_CAPS`. Barışçıl modda sınırsız (`weaponsUnlimited`). 1. etapta plakalar sönük (`setPlateVisualActive`).
+- **Rakipler:** `ai.gunAmmo` / `ai.rockets` / `ai.defense` plakalardan dolar; 1. etapta ateş etmez; cephanesi azalınca 80 m içindeki aktif kılıç/kalkan plakasına yönelir.
+- **R** (`respawnPlayer`): yalnızca oyuncu; sağlamsa `recoverCar`, imha olduysa tam can + parçalar yerinde. `resetCar` artık tuşa bağlı değil.
+- **Geri sayım** (`raceCountdown`, `updateCountdown`): ilk başlangıçta 3-2-1-BAŞLA; araçlar frende, eleme ve tur süresi bekler.
+- **UI:** silah yuvaları (`updateWeaponsHUD`, kilit/boş/bekleme/hazır + sayı; 1500 px altında isimler gizli), duyuru sırası (`bannerQueue`), sonuç/kaçış ekranı düğmeleri (`pauseAction('restart'|'menu')`), kariyer hedef çipi (`#career-goal`), mod menüsünde 1-4 tuşları, "Kapat" → "Hızlı başla", km/s → km/sa.
