@@ -2480,7 +2480,7 @@ createPlate('shield', [80.0, -150]);
    TUR & ELEME MODU (ELIMINATION MODE) SİSTEMİ
    ========================================================== */
 let lapCount = 1;
-const MAX_LAPS = 3;
+let MAX_LAPS = 3; // kariyer etabına göre değişebilir
 let lapStartTime = performance.now();
 let currentLapTime = 0;
 let bestLapTime = null;
@@ -2636,6 +2636,8 @@ const { chassisBody, vehicle } = createVehiclePhysics([0, 0.85, 0], 0);
    GENİŞLETİLMİŞ GARAJ, 3D VİTRİN & ÖZELLEŞTİRME SİSTEMİ
    ========================================================== */
 const customization = {
+ difficulty: 'normal',
+ quality: 'high',
  skin: 'classic_black',
  decal: 'none',
  wheelBlades: 'none',
@@ -2880,17 +2882,38 @@ function applyAmmoType(typeId) {
 window.applyAmmoType = applyAmmoType;
 
 // 7. YARIŞ & MAÇ AYARLARI
+// Zorluk: rakip hızı, ateş hızı, isabet açısı/menzili ve oyuncuya verdiği hasar çarpanları
+const DIFFICULTY = {
+ easy: { name: 'KOLAY', speed: 0.86, fireMul: 1.6, aimDot: 0.94, range: 30, dmg: 0.6 },
+ normal: { name: 'NORMAL', speed: 1.0, fireMul: 1.0, aimDot: 0.88, range: 40, dmg: 1.0 },
+ hard: { name: 'ZOR', speed: 1.12, fireMul: 0.72, aimDot: 0.82, range: 52, dmg: 1.35 }
+};
+// Kariyer etabı aktifken etabın ayarları, değilse garajda seçilenler geçerlidir
+function raceSetting(key) {
+ if (activeCareerEvent && activeCareerEvent[key] !== undefined) return activeCareerEvent[key];
+ return customization[key];
+}
+function diffCfg() { return DIFFICULTY[raceSetting('difficulty')] || DIFFICULTY.normal; }
+
 function applyMatchSetting(key, val) {
  customization[key] = val;
 
+ if (key === 'difficulty' || key === 'quality') {
+  const prefix = key === 'difficulty' ? 'diff-' : 'qual-';
+  document.querySelectorAll(`[id^="${prefix}"]`).forEach(el => el.classList.toggle('active', el.id === prefix + val));
+  if (key === 'quality') applyQuality(val);
+  if (key === 'difficulty') showBanner(`ZORLUK: ${(DIFFICULTY[val] || DIFFICULTY.normal).name}`, 'buff-sword');
+  return;
+ }
+
  if (key === 'aiAggression') {
-  document.querySelectorAll('#tab-pane-match .custom-section:nth-child(1) .custom-card').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('[id^="ai-agg-"]').forEach(el => el.classList.remove('active'));
   const activeEl = document.getElementById(`ai-agg-${val}`);
   if (activeEl) activeEl.classList.add('active');
   showBanner(`AI SALDIRGANLIĞI: ${val.toUpperCase()}`, 'buff-sword');
   showRadioMessage(val === 'brutal' ? 'Dikkat Frankenstein! Rakipler gözünü kararttı, ölümüne saldıracaklar!' : 'AI dengeli taktiksel yarış moduna geçti.', 'case');
  } else if (key === 'elimination') {
-  document.querySelectorAll('#tab-pane-match .custom-section:nth-child(2) .custom-card').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('[id^="elim-"]').forEach(el => el.classList.remove('active'));
   const activeEl = document.getElementById(`elim-${val}`);
   if (activeEl) activeEl.classList.add('active');
 
@@ -3472,8 +3495,16 @@ let isGameStarted = false;
 window.isGameStarted = false;
 
 function setGameMode(mode, closeModal = false) {
- if (!isGameStarted) raceStartCredits = playerCredits;
+ if (!isGameStarted) {
+  raceStartCredits = playerCredits;
+  // Önceden tur zamanlayıcısı sayfa açılınca başlıyordu; ilk tura menüde geçen süre ekleniyordu
+  lapStartTime = performance.now();
+  resetGhostRecording();
+ }
  isGameStarted = true;
+ activeCareerEvent = mode === 'career' ? (CAREER_EVENTS[careerProgress.event] || CAREER_EVENTS[CAREER_EVENTS.length - 1]) : null;
+ if (activeCareerEvent) startCareerEvent(activeCareerEvent);
+ if (mode === 'career') mode = 'deathrace';
  window.isGameStarted = true;
  currentGameMode = mode;
  if (Snd && Snd.playMenuClick) Snd.playMenuClick();
@@ -3617,6 +3648,7 @@ function applyCarDamage(dmg, contactPoint = null, normal = null) {
 
  carHealth = Math.max(0, carHealth - dmg);
  Snd.playCrash(dmg / 35);
+ rumble(0.25 + dmg / 40);
  cameraShake = Math.max(cameraShake, Math.min(0.7, dmg * 0.022));
 
  if (carHealth < 40 && Math.random() < 0.35) {
@@ -4496,10 +4528,17 @@ function applyAIDamage(ai, dmg, hitPt = null, hitNorm = null) {
  }
 }
 
+function applyAmmoEffect(ai) {
+ if (!ai || ai.isDead) return;
+ const ammo = customization.ammoType;
+ if (ammo === 'incendiary') ai.burnTimer = 3.0;
+ else if (ammo === 'acid') ai.acidTimer = 3.0;
+}
+
 function shootAIBullet(ai) {
  if (ai.isDead || !aiFireEnabled) return;
  const now = performance.now();
- const cooldown = ai.overdriveTimer > 0 ? 70 : 130;
+ const cooldown = (ai.overdriveTimer > 0 ? 70 : 130) * diffCfg().fireMul * (raceSetting('aiAggression') === 'brutal' ? 0.8 : 1);
  if (now - ai.lastShotTime < cooldown) return;
  ai.lastShotTime = now;
 
@@ -4523,6 +4562,7 @@ function shootAIBullet(ai) {
  Snd.playGunshot(true);
 }
 
+const _upNormalAI = new T.Vector3(0, 1, 0);
 function updateAIOpponents(dt) {
  const playerPos = chassisBody.position;
 
@@ -4581,6 +4621,16 @@ function updateAIOpponents(dt) {
    if (Math.random() < 0.3) spawnSparks(aiPos, new T.Vector3(0, 1, 0), 6);
   }
 
+  // Mühimmat etkileri: alevli mermi yanma hasarı, asit yavaşlatması
+  if (ai.burnTimer > 0) {
+   ai.burnTimer -= dt;
+   ai.burnTick = (ai.burnTick || 0) + dt;
+   if (ai.burnTick >= 0.5) { ai.burnTick = 0; applyAIDamage(ai, 3); }
+   if (Math.random() < 0.35) spawnSparks(aiPos, _upNormalAI, 3);
+   if (ai.isDead) continue;
+  }
+  if (ai.acidTimer > 0) ai.acidTimer -= dt;
+
   ai.lastTrackIndex = (ai.lastTrackIndex !== undefined) ? ai.lastTrackIndex : 0;
   const trackInfo = getTrackDistance(aiPos, ai.lastTrackIndex);
   ai.lastTrackIndex = trackInfo.index;
@@ -4603,7 +4653,8 @@ function updateAIOpponents(dt) {
   ai.steer = Math.max(-1, Math.min(1, angleDiff * 2.0));
 
   // Nemesis AI: Oyuncuya Kilitlenip Doğrudan Çarpışma Rotasına Girer
-  if (ai.isNemesis) {
+  // "Vahşi Katliam" saldırganlığında tüm rakipler yakındaki oyuncuya çarpmaya çalışır
+  if (ai.isNemesis || raceSetting('aiAggression') === 'brutal') {
    const toPlayer = playerPos.vsub(aiPos);
    const distToP = toPlayer.length();
    if (distToP < 45.0 && distToP > 3.0) {
@@ -4622,6 +4673,8 @@ function updateAIOpponents(dt) {
   let targetSpeedMs = isSharpTurn ? (ai.cfg.maxSpeed * 0.55) / 3.6 : (ai.cfg.maxSpeed) / 3.6;
   if (ai.isNemesis) targetSpeedMs *= 1.15; // Nemesis daha hızlı takip eder!
   if (ai.flatTireTimer > 0) targetSpeedMs *= 0.6;
+  if (ai.acidTimer > 0) targetSpeedMs *= 0.65;
+  targetSpeedMs *= diffCfg().speed;
 
   if (speed < targetSpeedMs) {
    const forcePct = Math.max(0, 1 - speed / targetSpeedMs);
@@ -4653,7 +4706,8 @@ function updateAIOpponents(dt) {
   const toPlayer = new T.Vector3(playerPos.x - aiPos.x, playerPos.y - aiPos.y, playerPos.z - aiPos.z).normalize();
   const aimDot = fwd.dot(toPlayer);
 
-  if (distToPlayer < 40 && aimDot > 0.88 && carHealth > 0 && aiFireEnabled) {
+  const dc = diffCfg();
+  if (distToPlayer < dc.range && aimDot > dc.aimDot && carHealth > 0 && aiFireEnabled && !raceFinished) {
    shootAIBullet(ai);
    ai.leftGun.barrelGroup.rotation.z += 40 * dt;
    ai.rightGun.barrelGroup.rotation.z += 40 * dt;
@@ -4685,6 +4739,14 @@ loadGLTFModel('car_body').then(model => {
   ai.carBodyMesh = aiModel;
   ai.meshGroup.add(aiModel);
  }
+ // Hayalet araç: gövdenin yarı saydam kopyası
+ const ghostBody = model.clone(true);
+ ghostBody.traverse(o => { if (o.isMesh) { o.material = ghostMat; o.castShadow = false; o.receiveShadow = false; } });
+ ghostBody.position.set(0, BODY_Y_OFFSET, 0);
+ ghostMesh = new T.Group();
+ ghostMesh.add(ghostBody);
+ ghostMesh.visible = false;
+ scene.add(ghostMesh);
  // Kayıttan gelen boya model yüklenince uygulanır (model asenkron yüklendiği için)
  if (currentSkin !== 'classic_black') {
   silentRestore = true;
@@ -5001,10 +5063,19 @@ addEventListener('keydown', e => {
  const k = e.key.toLowerCase();
  KEYS[k] = true;
  Snd.init();
+ if (e.key === 'Escape') { closeAudioModal(); }
+ handleKeyAction(k);
+});
 
+// Tek seferlik tuş eylemleri (klavye ve gamepad ortak kullanır)
+function handleKeyAction(k) {
  if (k === 'g') { toggleGarage(); }
  if (k === 'j') { toggleAudioModal(); }
- if (e.key === 'Escape') { closeAudioModal(); }
+ if (k === 'y') { toggleGhost(); }
+ if (k === 'l') {
+  const now = performance.now();
+  if (now - lastSmokeTime > 3000) { lastSmokeTime = now; dropSmokeScreen(); }
+ }
 
   if (k === 'e') { triggerEMPBlast(); }
   if (k === 'b') { deployStickyMine(); }
@@ -5031,7 +5102,7 @@ addEventListener('keydown', e => {
   deploySpikeStrip();
  }
  if (k === 'k') { fireRocket(); }
-});
+}
 
 addEventListener('keyup', e => { KEYS[e.key.toLowerCase()] = false; });
 addEventListener('mousedown', e => {
@@ -5170,7 +5241,9 @@ function shootBullet() {
  bMesh.quaternion.copy(carGroup.quaternion);
  if (upgrades.gun >= 2) bMesh.scale.set(1.5, 1.5, 1.5);
 
- const dmg = 25 + (upgrades.gun - 1) * 16;
+ const ammo = customization.ammoType;
+ // AP: +%40 hasar · Alevli/Asit: biraz daha az doğrudan hasar ama yan etki uygular
+ const dmg = (25 + (upgrades.gun - 1) * 16) * (ammo === 'ap' ? 1.4 : (ammo === 'fmj' ? 1 : 0.85));
 
  activeBullets.push({
   mesh: bMesh, pos: muzzlePos.clone(), vel: fwd.clone().multiplyScalar(240),
@@ -5225,6 +5298,57 @@ function spawnDriftSmoke(pos) {
  smokeParticles.push({ mesh: m, life: 0.65, maxLife: 0.65 });
 }
 
+/* ==========================================================
+   GAMEPAD DESTEĞİ (Xbox / PlayStation standart düzen)
+   ==========================================================
+   RT gaz · LT fren/geri · Sol çubuk direksiyon · A el freni · B nitro · X minigun · Y roket
+   LB yağ · RB mayın · D-pad ↑ EMP · ↓ diken · ←/→ yan shunt · L3 odak · R3 hava saldırısı
+   Back/Select kamera · Start sıfırla. Menüde A = Ölüm Yarışı, X = Kariyer. */
+const GP = { active: false, steer: 0, throttle: 0, brake: 0, handbrake: false, nitro: false, fire: false, prev: [], pad: null };
+const GP_ACTIONS = { 3: 'k', 4: 'q', 5: 'b', 8: 'n', 10: 'f', 11: 'u', 12: 'e', 13: 'x', 14: 'z', 15: 'c' };
+function pollGamepad() {
+ const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+ let gp = null;
+ for (const p of pads) { if (p && p.connected) { gp = p; break; } }
+ if (!gp) {
+  if (GP.active) { GP.active = false; GP.steer = GP.throttle = GP.brake = 0; GP.handbrake = GP.nitro = GP.fire = false; GP.pad = null; }
+  return;
+ }
+ if (!GP.active) { GP.active = true; showBanner('🎮 GAMEPAD BAĞLANDI'); }
+ GP.pad = gp;
+ const b = gp.buttons;
+ const val = i => (b[i] ? (typeof b[i].value === 'number' ? b[i].value : (b[i].pressed ? 1 : 0)) : 0);
+ const pressed = i => !!(b[i] && b[i].pressed);
+ const ax = gp.axes[0] || 0;
+ GP.steer = Math.abs(ax) > 0.12 ? Math.sign(ax) * (Math.abs(ax) - 0.12) / 0.88 : 0;
+ GP.throttle = val(7);
+ GP.brake = val(6);
+ GP.handbrake = pressed(0);
+ GP.nitro = pressed(1);
+ GP.fire = pressed(2);
+ for (let i = 0; i < b.length; i++) {
+  const now = pressed(i);
+  if (now && !GP.prev[i]) {
+   Snd.init();
+   if (!isGameStarted && !garageModeActive) {
+    if (i === 0) setGameMode('deathrace', true);
+    if (i === 2) setGameMode('career', true);
+   } else if (GP_ACTIONS[i]) {
+    handleKeyAction(GP_ACTIONS[i]);
+   } else if (i === 9) {
+    KEYS['r'] = true; // updateControls tüketir
+   }
+  }
+  GP.prev[i] = now;
+ }
+}
+function rumble(strength, ms = 120) {
+ const act = GP.pad && GP.pad.vibrationActuator;
+ if (!act || !act.playEffect) return;
+ try { act.playEffect('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, strength), weakMagnitude: Math.min(1, strength * 0.6) }); } catch (e) {}
+}
+addEventListener('gamepadconnected', () => Snd.init());
+
 function updateControls(dt) {
  if (garageModeActive) {
   for (let i = 0; i < 4; i++) { vehicle.applyEngineForce(0, i); vehicle.setBrake(65, i); }
@@ -5243,10 +5367,10 @@ function updateControls(dt) {
 
  // 1. Hıza duyarlı dinamik FOV (Hız arttıkça görüş açısı açılarak müthiş bir hız hissi verir)
  const speedRatio = Math.min(1.0, speedKmh / 230);
- const isPressingForward = (KEYS['w'] || KEYS['arrowup']);
- const isPressingBrake = (KEYS['s'] || KEYS['arrowdown']);
- const isPressingHandbrake = KEYS[' '];
- const usingNitro = (KEYS['shift']) && nitroAmount > 5 && isPressingForward;
+ const isPressingForward = (KEYS['w'] || KEYS['arrowup'] || GP.throttle > 0.12);
+ const isPressingBrake = (KEYS['s'] || KEYS['arrowdown'] || GP.brake > 0.12);
+ const isPressingHandbrake = KEYS[' '] || GP.handbrake;
+ const usingNitro = (KEYS['shift'] || GP.nitro) && nitroAmount > 5 && isPressingForward;
  targetFOV = 62 + speedRatio * 18 + (usingNitro ? 12 : 0);
  Snd.updateEngine(speedKmh, isPressingForward);
 
@@ -5301,7 +5425,8 @@ function updateControls(dt) {
  let brakeForce = 0;
 
  if (isPressingForward) {
-  forward = 1;
+  // Gamepad tetiği analog gaz verir; klavye tam gaz
+  forward = (KEYS['w'] || KEYS['arrowup']) ? 1 : Math.min(1, GP.throttle * 1.1);
   // Kritik Hasar Motor Boğulması (<25 HP)
   if (carHealth > 0 && carHealth < 25) {
    if (Math.random() < 0.05) {
@@ -5352,7 +5477,8 @@ function updateControls(dt) {
  }
 
  // 4. Direksiyon: Hıza duyarlı ağırbaşlı dönüş (Yüksek hızda ani savrulmayı önler)
- const steerRaw = (KEYS['a'] || KEYS['arrowleft']) ? 1 : (KEYS['d'] || KEYS['arrowright']) ? -1 : 0;
+ let steerRaw = (KEYS['a'] || KEYS['arrowleft']) ? 1 : (KEYS['d'] || KEYS['arrowright']) ? -1 : 0;
+ if (steerRaw === 0 && GP.steer !== 0) steerRaw = -GP.steer; // analog çubuk
  const speedSteerScale = Math.max(0.35, 1.0 - (speedKmh / 240) * 0.65);
  const targetSteer = steerRaw * MAX_STEER * speedSteerScale;
  smoothSteer = T.MathUtils.lerp(smoothSteer, targetSteer, 1 - Math.exp(-18 * dt));
@@ -5391,7 +5517,8 @@ function updateControls(dt) {
   vehicle.setBrake(brakeForce, i);
  }
 
- const firing = KEYS['j'] || KEYS['f'] || KEYS['control'] || KEYS['enter'] || isMouseDown;
+ // Not: önceden 'j' (ses menüsü) ve 'f' (odak) tuşları da minigunu ateşliyordu
+ const firing = KEYS['control'] || KEYS['enter'] || isMouseDown || GP.fire;
  if (firing) {
   shootBullet();
   const spinSpeed = overdriveTimer > 0 ? 80 : 40;
@@ -5408,10 +5535,7 @@ function updateControls(dt) {
   if (isOverheated && gunHeat < 0.35) isOverheated = false;
  }
 
- if (KEYS['e']) {
-  const now = performance.now();
-  if (now - lastSmokeTime > 3000) { lastSmokeTime = now; dropSmokeScreen(); }
- }
+ // Duman perdesi 'L' tuşuna taşındı (önceden 'E' basılı tutulunca EMP ile birlikte tetikleniyordu)
 
  if (KEYS['t']) { dropTombstone(); KEYS['t'] = false; }
  if (KEYS['r']) { resetCar(); KEYS['r'] = false; }
@@ -6026,6 +6150,8 @@ function showPostRaceStats(isEscape = false) {
  document.getElementById('stat-credits').textContent = '+' + fmtTR(Math.max(0, playerCredits - raceStartCredits)) + ' PTS';
  const rankEl = document.getElementById('stat-rank');
  if (rankEl) rankEl.textContent = isEscape ? 'KAÇTI' : `${raceStats.finishRank || playerRank}. SIRA (+${fmtTR(raceStats.finishReward || 0)})`;
+ const careerEl = document.getElementById('post-race-career');
+ if (careerEl) { careerEl.textContent = raceStats.careerText || ''; careerEl.style.display = raceStats.careerText ? 'block' : 'none'; }
  document.getElementById('stat-viewers').textContent = fmtTR(currentViewers);
 
  const titleEl = document.getElementById('post-race-mvp-title');
@@ -6269,6 +6395,7 @@ function triggerEscapeVictory() {
  showRadioMessage('BAŞARDIK! Kargo gemisine indik! Terminal Island cehennemi bitti!', 'case');
  addViewers(25000000, 'ADADAN KAÇIŞ ZAFERİ!');
  playerCredits += 500000; // modalda vaat edilen ödül önceden hiç verilmiyordu
+ if (activeCareerEvent) careerResult(1); // limandan kaçış etabı birincilikle geçmiş sayılır
  if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
  saveProgress();
 }
@@ -6285,8 +6412,9 @@ function finishRace() {
  // Bitiş anındaki gerçek sıralamayı hesapla
  ratingsThrottleTimer = 1;
  updateRatingsAndRanks(0);
- const reward = FINISH_REWARDS[playerRank - 1] || 20000;
+ const reward = Math.round((FINISH_REWARDS[playerRank - 1] || 20000) * (activeCareerEvent ? activeCareerEvent.reward : 1));
  playerCredits += reward;
+ raceStats.careerText = activeCareerEvent ? careerResult(playerRank) : '';
  if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
  raceStats.finishRank = playerRank;
  raceStats.finishReward = reward;
@@ -6318,11 +6446,13 @@ function updateCheckpoints(dt) {
    addViewers(250000, `TUR ${lapCount} TAMAMLANDI!`);
    Snd.playCheckpoint();
    // Önceden 3. turdan sonra sayaç 1'e dönüyor ve yarış hiç bitmiyordu
+   onGhostLapCompleted(lapMs);
    if (lapCount >= MAX_LAPS) { finishRace(); return; }
    lapCount = lapCount + 1;
    updateLapWeather(lapCount);
    lapNumEl.textContent = lapCount;
    lapStartTime = performance.now();
+   resetGhostRecording();
 
    
     // Çok Aşamalı Yarış & Senaryo Geçişleri
@@ -6353,7 +6483,7 @@ function updateCheckpoints(dt) {
  if (lapTxt !== lastLapTxt) { lastLapTxt = lapTxt; lapTimeEl.textContent = lapTxt; }
 
  // Eleme Modu Sayacı Güncellemesi
- if (!aiFireEnabled || customization.elimination === 'off') { return; }
+ if (!aiFireEnabled || raceSetting('elimination') === 'off' || raceFinished) { return; }
  eliminationTimer -= dt;
  if (eliminationTimerEl) {
   const elimTxt = `${Math.max(0, eliminationTimer).toFixed(1)}s`;
@@ -6361,7 +6491,7 @@ function updateCheckpoints(dt) {
  }
 
  if (eliminationTimer <= 0) {
-  eliminationTimer = customization.elimination === '30s' ? 30.0 : 45.0; // Sayacı seçili ayara göre sıfırla
+  eliminationTimer = raceSetting('elimination') === '30s' ? 30.0 : 45.0; // Sayacı seçili ayara göre sıfırla
 
   // O anki en son sıradaki aracı bul ve patlat! (sıralama sistemiyle aynı tur-farkındalıklı mesafe)
   const racers = [{ id: 'player', name: 'FRANKENSTEIN', totalDist: playerRankState.raceDist || 0, isPlayer: true, health: carHealth }];
@@ -6477,6 +6607,169 @@ function updateRatingsAndRanks(dt) {
  if (slotRPG) slotRPG.className = 'wep-slot ' + (now - lastRPGTime >= 4500 ? 'ready' : 'cooling');
  if (slotOil) slotOil.className = 'wep-slot ' + (now - lastOilTime >= 5000 ? 'ready' : 'cooling');
  if (slotCaltrop) slotCaltrop.className = 'wep-slot ' + (now - lastCaltropTime >= 5000 ? 'ready' : 'cooling');
+}
+
+/* ==========================================================
+   GRAFİK KALİTESİ (DÜŞÜK / ORTA / YÜKSEK / OTOMATİK)
+   ==========================================================
+   Düşük: 0.75x çözünürlük, gölge yok · Orta: 1x, gölge · Yüksek: ekran DPR'si (en fazla 2x), gölge
+   Otomatik: Yüksek ile başlar, kare süresi 20 ms'yi aşarsa çözünürlüğü kademeli düşürür, rahatlarsa geri yükseltir. */
+const QUALITY_PRESETS = {
+ low: { pr: 0.75, shadows: false },
+ medium: { pr: 1.0, shadows: true },
+ high: { pr: 2.0, shadows: true },
+ auto: { pr: 2.0, shadows: true }
+};
+let qualityMaxPR = 1;
+let qualityPR = 1;
+let autoResTimer = 0, autoResSum = 0, autoResFrames = 0, autoResCalm = 0;
+function applyQuality(q) {
+ const p = QUALITY_PRESETS[q] || QUALITY_PRESETS.high;
+ const dpr = window.devicePixelRatio || 1;
+ qualityMaxPR = q === 'low' ? Math.min(1, dpr) * p.pr : Math.min(p.pr, dpr);
+ qualityPR = qualityMaxPR;
+ renderer.setPixelRatio(qualityPR);
+ resize();
+ // Gölge açma/kapama ışık durumunu değiştirdiği için tek seferlik shader yeniden derlemesi olur (yalnızca ayar değişiminde)
+ if (sun.castShadow !== p.shadows) {
+  sun.castShadow = p.shadows;
+  try { renderer.compileAsync(scene, camera); } catch (e) {}
+ }
+ autoResTimer = autoResSum = autoResFrames = autoResCalm = 0;
+}
+function updateAutoResolution(frameMs) {
+ if (customization.quality !== 'auto') return;
+ autoResSum += frameMs; autoResFrames++; autoResTimer += frameMs;
+ if (autoResTimer < 2000) return;
+ const avg = autoResSum / autoResFrames;
+ autoResTimer = autoResSum = autoResFrames = 0;
+ if (avg > 20 && qualityPR > 0.6) {
+  qualityPR = Math.max(0.6, qualityPR - 0.15);
+  renderer.setPixelRatio(qualityPR); resize();
+  autoResCalm = 0;
+ } else if (avg < 12 && qualityPR < qualityMaxPR) {
+  if (++autoResCalm >= 3) {
+   qualityPR = Math.min(qualityMaxPR, qualityPR + 0.1);
+   renderer.setPixelRatio(qualityPR); resize();
+   autoResCalm = 0;
+  }
+ } else {
+  autoResCalm = 0;
+ }
+}
+
+/* ==========================================================
+   KARİYER MODU
+   ==========================================================
+   5 etaplık seri. Her etap kendi tur sayısı, zorluğu, saldırganlığı ve eleme ayarıyla oynanır;
+   gereken sıraya girilirse sonraki etap açılır. Ödül çarpanı etap ilerledikçe artar. */
+const CAREER_EVENTS = [
+ { name: 'ÇAYLAK TURU', laps: 2, difficulty: 'easy', aiAggression: 'normal', elimination: 'off', needRank: 3, reward: 1.0 },
+ { name: 'KAN KOKUSU', laps: 3, difficulty: 'normal', aiAggression: 'normal', elimination: '45s', needRank: 3, reward: 1.25 },
+ { name: 'KASAP PİSTİ', laps: 3, difficulty: 'normal', aiAggression: 'brutal', elimination: '45s', needRank: 2, reward: 1.5 },
+ { name: 'DREADNOUGHT AVI', laps: 3, difficulty: 'hard', aiAggression: 'normal', elimination: '30s', needRank: 2, reward: 1.75 },
+ { name: 'FİNAL: TERMINAL ISLAND', laps: 3, difficulty: 'hard', aiAggression: 'brutal', elimination: '30s', needRank: 1, reward: 2.5 }
+];
+let careerProgress = { event: 0, done: false };
+let activeCareerEvent = null;
+
+function careerEventIndex(ev) { return CAREER_EVENTS.indexOf(ev); }
+function startCareerEvent(ev) {
+ const idx = careerEventIndex(ev);
+ MAX_LAPS = ev.laps;
+ const totalEl = document.getElementById('lap-total');
+ if (totalEl) totalEl.textContent = ev.laps;
+ eliminationTimer = ev.elimination === '30s' ? 30.0 : 45.0;
+ const elimEl = document.getElementById('elimination-hud');
+ if (elimEl) elimEl.style.display = ev.elimination === 'off' ? 'none' : 'block';
+ setTimeout(() => {
+  showBanner(`🏆 KARİYER ETAP ${idx + 1}/${CAREER_EVENTS.length}: ${ev.name} — EN AZ ${ev.needRank}. OL!`, 'buff-shield');
+ }, 2600);
+}
+// Etap sonucunu işler, ilerlemeyi kaydeder ve sonuç ekranı için açıklama döndürür
+function careerResult(rank) {
+ const ev = activeCareerEvent;
+ if (!ev) return '';
+ const idx = careerEventIndex(ev);
+ let text;
+ if (rank <= ev.needRank) {
+  if (idx + 1 >= CAREER_EVENTS.length) {
+   careerProgress.done = true;
+   careerProgress.event = CAREER_EVENTS.length - 1;
+   text = '🏆 KARİYER TAMAMLANDI! TERMINAL ISLAND EFSANESİ OLDUN!';
+  } else {
+   careerProgress.event = Math.max(careerProgress.event, idx + 1);
+   text = `✅ ETAP GEÇİLDİ! SIRADAKİ: ${CAREER_EVENTS[idx + 1].name}`;
+  }
+ } else {
+  text = `❌ ETAP GEÇİLEMEDİ: EN AZ ${ev.needRank}. OLMALISIN. GARAJDA GÜÇLENİP TEKRAR DENE!`;
+ }
+ saveProgress();
+ updateCareerCard();
+ return text;
+}
+function updateCareerCard() {
+ const el = document.getElementById('career-card-desc');
+ if (!el) return;
+ const ev = CAREER_EVENTS[careerProgress.event] || CAREER_EVENTS[0];
+ el.textContent = careerProgress.done
+  ? 'Kariyer tamamlandı! Final etabını istediğin kadar tekrar oynayabilirsin.'
+  : `Etap ${careerProgress.event + 1}/${CAREER_EVENTS.length}: ${ev.name} · ${ev.laps} tur · ${(DIFFICULTY[ev.difficulty] || DIFFICULTY.normal).name} · En az ${ev.needRank}. ol`;
+}
+
+/* ==========================================================
+   HAYALET ARAÇ (EN İYİ TUR KAYDI)
+   ==========================================================
+   Her tur 0.1 sn aralıkla konum/rotasyon kaydedilir. En iyi tur localStorage'a yazılır ve sonraki
+   turlarda yarı saydam bir araç olarak oynatılır. [Y] ile açılıp kapanır. */
+const GHOST_KEY = 'death_race_ghost_v1';
+const GHOST_STEP_MS = 100;
+const ghostMat = new T.MeshBasicMaterial({ color: '#9fe7ff', transparent: true, opacity: 0.32, depthWrite: false });
+let ghostMesh = null;
+let ghostEnabled = true;
+let ghostBest = null; // { lapMs, s: [x,y,z,qx,qy,qz,qw, ...] }
+let ghostRec = [];
+let ghostNextSample = 0;
+try { ghostBest = JSON.parse(localStorage.getItem(GHOST_KEY) || 'null'); } catch (e) {}
+const _gq1 = new T.Quaternion(), _gq2 = new T.Quaternion();
+
+function resetGhostRecording() { ghostRec = []; ghostNextSample = 0; }
+function toggleGhost() {
+ ghostEnabled = !ghostEnabled;
+ showBanner(ghostEnabled ? '👻 HAYALET ARAÇ: AÇIK [Y]' : '👻 HAYALET ARAÇ: KAPALI [Y]');
+}
+function onGhostLapCompleted(lapMs) {
+ if (ghostRec.length < 20) return;
+ if (!ghostBest || lapMs < ghostBest.lapMs) {
+  ghostBest = { lapMs, s: ghostRec.map(v => Math.round(v * 1000) / 1000) };
+  try { localStorage.setItem(GHOST_KEY, JSON.stringify(ghostBest)); } catch (e) {}
+  showBanner('👻 YENİ EN İYİ TUR! HAYALET KAYDEDİLDİ', 'buff-shield');
+ }
+}
+function updateGhost() {
+ const racing = isGameStarted && !garageModeActive && !raceFinished;
+ const t = performance.now() - lapStartTime;
+ // Kayıt
+ if (racing && carHealth > 0) {
+  while (ghostNextSample <= t) {
+   const p = chassisBody.position, q = chassisBody.quaternion;
+   ghostRec.push(p.x, p.y, p.z, q.x, q.y, q.z, q.w);
+   ghostNextSample += GHOST_STEP_MS;
+  }
+ }
+ // Oynatma
+ if (!ghostMesh) return;
+ const s = ghostBest && ghostBest.s;
+ const n = s ? s.length / 7 : 0;
+ const f = t / GHOST_STEP_MS;
+ const i = Math.floor(f);
+ if (!ghostEnabled || !racing || n < 2 || i >= n - 1) { ghostMesh.visible = false; return; }
+ const a = i * 7, b = a + 7, k = f - i;
+ ghostMesh.visible = true;
+ ghostMesh.position.set(s[a] + (s[b] - s[a]) * k, s[a + 1] + (s[b + 1] - s[a + 1]) * k, s[a + 2] + (s[b + 2] - s[a + 2]) * k);
+ _gq1.set(s[a + 3], s[a + 4], s[a + 5], s[a + 6]);
+ _gq2.set(s[b + 3], s[b + 4], s[b + 5], s[b + 6]);
+ ghostMesh.quaternion.copy(_gq1).slerp(_gq2, k);
 }
 
 /* ==========================================================
@@ -6765,7 +7058,7 @@ const shaderWarmupGroup = new T.Group();
  const warmMats = [
   rocketMat, oilMat, caltropMat, mineMat, spikeStripMat, airdropCrateMat, parachuteMat, crateSmokeMat,
   flameMat, bladeMat, sawMat, bumperSteelMat, bulletMatPlayerLvl2, bulletMatPlayerLvl3, bulletMatEnemy,
-  bulletMatCannon, smokeMat, damageSmokeFireMat, damageSmokeDarkMat, expMat
+  bulletMatCannon, smokeMat, damageSmokeFireMat, damageSmokeDarkMat, expMat, ghostMat
  ];
  for (const m of warmMats) {
   if (!m) continue;
@@ -6913,7 +7206,7 @@ function updateBulletsAndFX(dt) {
        continue;
       }
      spawnSparks(hitPt, hitNorm, 12);
-     applyCarDamage(b.isHeavyCannon ? 40 : 15 + Math.random() * 8, hitPt, hitNorm);
+     applyCarDamage((b.isHeavyCannon ? 40 : 15 + Math.random() * 8) * diffCfg().dmg, hitPt, hitNorm);
      if (b.isHeavyCannon) createExplosion(hitPt, 7, 3500);
      releaseBulletMesh(b.mesh);
      activeBullets.splice(i, 1);
@@ -6929,6 +7222,7 @@ function updateBulletsAndFX(dt) {
     hitBody.applyImpulse(new CANNON.Vec3(b.vel.x * 0.4, b.vel.y * 0.4, b.vel.z * 0.4), result.hitPointWorld);
     if (hitBody.targetData && hitBody.targetData.onHit) {
      hitBody.targetData.onHit(b.damage || (b.isHeavyCannon ? 45 : 25), hitPt, hitNorm);
+     if (!b.isEnemy && hitBody.targetData.type === 'ai') applyAmmoEffect(hitBody.targetData.ai);
     }
    }
 
@@ -7215,6 +7509,47 @@ function updateRadar(dt = 0.016) {
   radarCtx.fill();
  }
 
+ // Pit alanı (yeşil P)
+ const pitR = worldToRadar(215.0, 160.0);
+ radarCtx.fillStyle = '#2ecc71';
+ radarCtx.font = 'bold 9px monospace';
+ radarCtx.fillText('P', pitR.rx - 3, pitR.ry + 3);
+
+ // Hava ikmal sandıkları (yanıp sönen yeşil kare)
+ const blink = (performance.now() % 600) < 350;
+ for (const ad of activeAirdrops) {
+  if (ad.collected || !blink) continue;
+  const dr = worldToRadar(ad.pos.x, ad.pos.z);
+  radarCtx.fillStyle = '#7dff9a';
+  radarCtx.fillRect(dr.rx - 3, dr.ry - 3, 6, 6);
+ }
+
+ // Mayınlar
+ radarCtx.fillStyle = '#ff5533';
+ for (const m of activeMines) {
+  const mr = worldToRadar(m.pos.x, m.pos.z);
+  radarCtx.fillRect(mr.rx - 1, mr.ry - 1, 2, 2);
+ }
+
+ // Kelle avı hedefi (altın halka)
+ if (bountyTargetAI && !bountyTargetAI.isDead) {
+  const br = worldToRadar(bountyTargetAI.chassisBody.position.x, bountyTargetAI.chassisBody.position.z);
+  radarCtx.strokeStyle = '#ffcc00';
+  radarCtx.lineWidth = 1.5;
+  radarCtx.beginPath();
+  radarCtx.arc(br.rx, br.ry, 6, 0, Math.PI * 2);
+  radarCtx.stroke();
+ }
+
+ // Hayalet araç (beyaz)
+ if (ghostMesh && ghostMesh.visible) {
+  const gr = worldToRadar(ghostMesh.position.x, ghostMesh.position.z);
+  radarCtx.fillStyle = 'rgba(200,240,255,0.85)';
+  radarCtx.beginPath();
+  radarCtx.arc(gr.rx, gr.ry, 2.5, 0, Math.PI * 2);
+  radarCtx.fill();
+ }
+
  // The Dreadnought (Mor / Kuru Kafa Blip)
  if (dreadnought.isActive && !dreadnought.isDead) {
   const dr = worldToRadar(dreadnoughtBody.position.x, dreadnoughtBody.position.z);
@@ -7261,6 +7596,8 @@ function loop(now) {
  // Shader'lar arka planda (paralel) derlenirken hiçbir şey çizilmez: ilk render'ın senkron derleme
  // yapıp ana thread'i saniyelerce kilitlemesi ve menü tıklamalarını geciktirmesi engellenir.
  if (!shadersReady) { last = now; return; }
+ pollGamepad();
+ updateAutoResolution(rawDt * 1000);
 
  // Başlangıç mod seçim penceresi açıkken ve garajda değilken:
  // Ağır simülasyonu beklet, kamerayı başlangıç çizgisine odakla. Arka plan modalın altında kaldığı
@@ -7316,6 +7653,7 @@ function loop(now) {
  const physicsDt = Math.min(0.02, dt);
  world.step(physicsDt);
  syncMeshes();
+ updateGhost();
  updateBulletsAndFX(dt);
  updateActivationPlates(dt);
   updateAirdrops(dt);
@@ -7694,7 +8032,7 @@ const SAVE_KEY = 'death_race_progress_v1';
 let lastSaveJson = '';
 function saveProgress() {
  try {
-  const json = JSON.stringify({ credits: playerCredits, upgrades, skin: currentSkin, customization });
+  const json = JSON.stringify({ credits: playerCredits, upgrades, skin: currentSkin, customization, career: careerProgress });
   if (json === lastSaveJson) return;
   localStorage.setItem(SAVE_KEY, json);
   lastSaveJson = json;
@@ -7724,6 +8062,12 @@ function loadProgress() {
   if (c.ammoType && c.ammoType !== 'fmj') applyAmmoType(c.ammoType);
   if (c.aiAggression && c.aiAggression !== 'normal') applyMatchSetting('aiAggression', c.aiAggression);
   if (c.elimination && c.elimination !== '45s') applyMatchSetting('elimination', c.elimination);
+  if (c.difficulty && DIFFICULTY[c.difficulty]) applyMatchSetting('difficulty', c.difficulty);
+  if (c.quality && QUALITY_PRESETS[c.quality] && c.quality !== 'high') applyMatchSetting('quality', c.quality);
+  if (data.career && Number.isInteger(data.career.event)) {
+   careerProgress.event = Math.max(0, Math.min(CAREER_EVENTS.length - 1, data.career.event));
+   careerProgress.done = !!data.career.done;
+  }
   if (data.skin && CAR_SKINS[data.skin]) {
    currentSkin = data.skin;
    if (carBodyMesh) applyCarSkin(data.skin);
@@ -7738,9 +8082,10 @@ function loadProgress() {
   silentRestore = false;
  }
  refreshUpgradeUI();
- lastSaveJson = JSON.stringify({ credits: playerCredits, upgrades, skin: currentSkin, customization });
+ lastSaveJson = JSON.stringify({ credits: playerCredits, upgrades, skin: currentSkin, customization, career: careerProgress });
 }
 loadProgress();
+updateCareerCard();
 raceStartCredits = playerCredits;
 // Garaj seçimleri, krediler ve yükseltmeler her değiştiğinde (5 sn içinde) ve sayfa kapanırken kaydedilir
 setInterval(saveProgress, 5000);

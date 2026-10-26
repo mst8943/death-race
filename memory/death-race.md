@@ -366,3 +366,14 @@
 - **Kaçış ödülü:** Modalda yazan +500.000 PTS artık gerçekten veriliyor.
 - **Partiküller:** Yağmur ve slipstream `frustumCulled=false`.
 - Not: `customization.aiAggression`, `ammoType` ve `decal` kaydediliyor ama oyunda henüz bir etkileri yok (mekanik genişletme aşamasında bağlanacak).
+
+## [Feature] Gamepad, Kariyer, Zorluk, Hayalet, Grafik Kalitesi, Mühimmat & Radar
+- **Gamepad** (`pollGamepad`, `GP`): RT gaz (analog), LT fren, sol çubuk direksiyon (analog), A el freni, B nitro, X minigun, Y roket, LB yağ, RB mayın, D-pad ↑ EMP / ↓ diken / ←→ yan shunt, L3 odak, R3 hava saldırısı, Back kamera, Start sıfırla. Menüde A = Ölüm Yarışı, X = Kariyer. Hasarda titreşim (`rumble`). Klavye eylemleri `handleKeyAction(k)` içinde ortak.
+- **Kariyer** (`CAREER_EVENTS`, `careerProgress`, `activeCareerEvent`): 5 etap (tur sayısı, zorluk, saldırganlık, eleme, gereken sıra, ödül çarpanı). Mod seçiminde KARİYER kartı; sonuç ekranında etap sonucu. İlerleme kayıtta (`career`). `raceSetting(key)` etap aktifse etabın, değilse garajın ayarını döndürür.
+- **Zorluk** (`DIFFICULTY`, garaj > Yarış Ayarları): rakip hızı, ateş hızı, isabet açısı/menzili, verdiği hasar.
+- **AI Saldırganlığı "Vahşi"**: tüm rakipler 45 m içinde oyuncuya çarpmaya çalışır, %20 daha hızlı ateş eder (önceden ayarın hiç etkisi yoktu).
+- **Mühimmat** (önceden etkisizdi): AP +%40 hasar; Alevli 3 sn yanma (0.5 sn'de 3 hasar); Asit 3 sn %35 yavaşlatma; alevli/asit doğrudan hasarı x0.85.
+- **Grafik kalitesi** (`applyQuality`): Düşük (0.75x, gölgesiz) / Orta (1x) / Yüksek (DPR, max 2) / Otomatik (kare > 20 ms ise çözünürlüğü 0.6x'e kadar düşürür).
+- **Hayalet araç** (`updateGhost`, [Y]): 0.1 sn örneklemeli tur kaydı, en iyi tur `death_race_ghost_v1`'de; yarı saydam araç olarak oynatılır.
+- **Radar**: pit (P), airdrop sandıkları, mayınlar, kelle avı hedefi, hayalet.
+- **Düzeltmeler**: F (odak) ve J (ses menüsü) minigunu da ateşliyordu; E (EMP) basılı tutulunca duman perdesi de bırakıyordu → duman [L]'ye taşındı. Tur zamanlayıcısı sayfa açılınca başlıyordu (ilk tur süresine menü süresi ekleniyordu) → yarış başlayınca başlar. Garaj eleme/saldırganlık kartları `nth-child` yerine id ile seçilir.

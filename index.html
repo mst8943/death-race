@@ -1072,7 +1072,7 @@
 <div id="crosshair"><div class="dot"></div></div>
 
 <div id="race-hud">
-  <div id="lap-display">TUR <span id="lap-num">1</span> / 3</div>
+  <div id="lap-display">TUR <span id="lap-num">1</span> / <span id="lap-total">3</span></div>
   <div id="stage-display" class="stage-tag stage-1">ETAP 1: SAF SÜRÜŞ & RAMMING (SİLAHLAR KİLİTLİ)</div>
   <div id="time-display"><span id="lap-time">00:00.0</span> &middot; <small>EN İYİ: <span id="best-time">--:--.-</span></small></div>
 </div>
@@ -1131,7 +1131,16 @@
         <button type="button" class="mode-choice-btn btn-peaceful">BARIŞÇIL MODLA BAŞLA</button>
       </div>
     
-      <!-- 3: Weyland Atölyesi & Garaj -->
+      <!-- 3: Kariyer Modu -->
+      <div class="mode-choice-card" onclick="handleCardSelect(this, 'career')" style="border-color:rgba(155,89,182,0.6)">
+        <div class="mode-choice-icon">🏆</div>
+        <div class="mode-choice-title">KARİYER</div>
+        <div class="mode-choice-badge" style="background:#9b59b6;color:#fff">5 ETAPLIK SERİ</div>
+        <p class="mode-choice-desc" id="career-card-desc">Etap 1/5: ÇAYLAK TURU</p>
+        <button type="button" class="mode-choice-btn" style="background:#9b59b6;color:#fff">KARİYERE DEVAM ET</button>
+      </div>
+
+      <!-- 4: Weyland Atölyesi & Garaj -->
       <div class="mode-choice-card" onclick="handleCardSelect(this, 'garage')" style="border-color:rgba(255,204,68,0.5)">
         <div class="mode-choice-icon">🛠️</div>
         <div class="mode-choice-title">WEYLAND ATÖLYESİ</div>
@@ -1268,6 +1277,7 @@
   <div class="post-race-card">
     <div class="post-race-title">🏆 WEYLAND ÖLÜM YARIŞI RAPORU</div>
     <div class="post-race-badge" id="post-race-mvp-title">MVP: TERMINAL ISLAND CANAVARI</div>
+    <div id="post-race-career" style="display:none;margin:10px 0 4px;font-weight:900;font-size:13px;color:#e0b0ff;letter-spacing:0.5px"></div>
     
     <div class="stats-grid">
       <div class="stat-item"><span class="stat-label">FİNİŞ SIRASI:</span><span class="stat-val" id="stat-rank">-</span></div>
@@ -1317,6 +1327,8 @@
   <span class="key">M</span> Müzik &middot; 
   <span class="key">H</span> Hava &middot; 
   <span class="key">P</span> Ateşkes &middot; 
+  <span class="key">L</span> Duman &middot; 
+  <span class="key">Y</span> Hayalet &middot; 
   <span class="key">R</span> Sıfırla<br>
   <span id="dbg"></span>
 </div>
@@ -1683,6 +1695,46 @@
           <div class="custom-card" id="ai-agg-brutal" onclick="applyMatchSetting('aiAggression', 'brutal')">
             <div class="custom-card-title" style="color:#ff3300">VAHŞİ KATLİAM</div>
             <div class="custom-card-desc">Sürekli sıkıştırma & ramming!</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">🎚️ ZORLUK SEVİYESİ</div>
+        <div class="custom-grid">
+          <div class="custom-card" id="diff-easy" onclick="applyMatchSetting('difficulty', 'easy')">
+            <div class="custom-card-title">KOLAY</div>
+            <div class="custom-card-desc">Yavaş rakipler, az hasar</div>
+          </div>
+          <div class="custom-card active" id="diff-normal" onclick="applyMatchSetting('difficulty', 'normal')">
+            <div class="custom-card-title">NORMAL</div>
+            <div class="custom-card-desc">Dengeli yarış</div>
+          </div>
+          <div class="custom-card" id="diff-hard" onclick="applyMatchSetting('difficulty', 'hard')">
+            <div class="custom-card-title" style="color:#ff3300">ZOR</div>
+            <div class="custom-card-desc">Hızlı, isabetli, acımasız</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-section">
+        <div class="custom-title">🖥️ GRAFİK KALİTESİ</div>
+        <div class="custom-grid">
+          <div class="custom-card" id="qual-low" onclick="applyMatchSetting('quality', 'low')">
+            <div class="custom-card-title">DÜŞÜK</div>
+            <div class="custom-card-desc">Düşük çözünürlük, gölgesiz</div>
+          </div>
+          <div class="custom-card" id="qual-medium" onclick="applyMatchSetting('quality', 'medium')">
+            <div class="custom-card-title">ORTA</div>
+            <div class="custom-card-desc">Normal çözünürlük</div>
+          </div>
+          <div class="custom-card active" id="qual-high" onclick="applyMatchSetting('quality', 'high')">
+            <div class="custom-card-title">YÜKSEK</div>
+            <div class="custom-card-desc">Tam keskinlik</div>
+          </div>
+          <div class="custom-card" id="qual-auto" onclick="applyMatchSetting('quality', 'auto')">
+            <div class="custom-card-title">OTOMATİK</div>
+            <div class="custom-card-desc">FPS düşünce çözünürlüğü azaltır</div>
           </div>
         </div>
       </div>
