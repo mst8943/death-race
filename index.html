@@ -1041,6 +1041,35 @@
   body.garage-open #combo-hud, body.garage-open #pit-hud, body.garage-open #takedown-pip-container { display:none !important }
 
 
+  /* Araç parça durumu (zırh barının üstünde) */
+  #buff-box{bottom:140px}
+  #parts-hud{position:absolute;left:14px;bottom:96px;width:200px;display:flex;flex-wrap:wrap;align-items:center;gap:3px;pointer-events:none;font-size:9px;font-weight:900;letter-spacing:0.5px}
+  .part-chip{padding:2px 5px;border-radius:3px;background:rgba(39,174,96,0.25);border:1px solid rgba(46,204,113,0.6);color:#bff5d2}
+  .part-chip.lost{background:rgba(192,57,43,0.35);border-color:#e74c3c;color:#ffb3a8;text-decoration:line-through}
+  #parts-effect{order:-1;width:100%;color:#ff8a7a;text-shadow:0 1px 3px #000}
+  #parts-effect:empty{display:none}
+  /* Fonttan bağımsız duraklatma simgesi */
+  .pause-icon{display:inline-block;width:10px;height:11px;border-left:3px solid currentColor;border-right:3px solid currentColor;box-sizing:border-box;vertical-align:-1px}
+  .pause-title .pause-icon{width:18px;height:20px;border-width:5px;margin-right:8px;vertical-align:-2px}
+  #engine-state{display:none;margin-left:6px;padding:1px 6px;border-radius:3px;background:rgba(230,126,34,0.3);border:1px solid #e67e22;color:#ffd2a8;font-size:10px;font-weight:900;vertical-align:middle}
+  body.garage-open #parts-hud{display:none}
+
+  /* Duraklatma menüsü */
+  #pause-menu{position:fixed;inset:0;background:rgba(6,8,12,0.78);display:none;align-items:center;justify-content:center;z-index:240}
+  body.paused #pause-menu{display:flex}
+  .pause-card{width:min(400px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;background:linear-gradient(160deg,#121722,#0d1118);border:1.5px solid rgba(255,204,68,0.55);border-radius:12px;padding:22px 22px 18px;color:#fff;box-shadow:0 16px 50px rgba(0,0,0,0.85)}
+  .pause-title{font-size:26px;font-weight:900;letter-spacing:3px;color:#ffcc44;text-align:center}
+  #pause-info{font-size:11px;font-weight:800;letter-spacing:0.8px;color:#9aa6b8;text-align:center;margin:6px 0 16px}
+  .pause-item{display:flex;align-items:center;gap:10px;width:100%;margin-bottom:7px;padding:11px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#e8ebf0;font-size:13px;font-weight:800;letter-spacing:0.8px;cursor:pointer;text-align:left;outline:none}
+  .pause-item:hover,.pause-item.focused{border-color:#ffcc44;background:rgba(255,204,68,0.12);color:#fff}
+  .pause-item.primary{background:#ffcc44;color:#111;border-color:#ffcc44}
+  .pause-item.primary.focused,.pause-item.primary:hover{box-shadow:0 0 0 2px rgba(255,255,255,0.7)}
+  .pause-item .pause-key{margin-left:auto;font-size:10px;opacity:0.65;font-family:monospace}
+  .pause-hint{font-size:10px;color:#7f8a9b;text-align:center;margin-top:8px}
+  #pause-controls{display:none;margin:4px 0 10px;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);font-size:11px;line-height:1.75;color:#cfd6e0}
+  #pause-controls b{color:#ffcc44}
+  body.paused #audio-modal{z-index:260}
+
   /* Küçük ekranlar (≤ 820 px yükseklik): rakip listesi ve radar biraz küçülür */
   @media (max-height: 820px) {
     #rivals-hud{transform:scale(0.92);transform-origin:top right}
@@ -1131,6 +1160,9 @@
   </button>
   <button id="btn-open-garage" class="mode-pill-btn garage-btn" onclick="toggleGarage()" title="Garaj & Yükseltmeler [G]">
     <span>🛠️</span> GARAJ [G]
+  </button>
+  <button id="btn-pause" class="mode-pill-btn" onclick="setPaused(true)" title="Duraklat [ESC]">
+    <span class="pause-icon"></span>
   </button>
   <button id="btn-open-audio" class="mode-pill-btn audio-btn" onclick="toggleAudioModal()" title="Ses & Müzik Ayarları [J]">
     <span id="top-audio-icon">🔊</span> SES
@@ -1332,6 +1364,7 @@
   </div>
 </div>
 
+<div id="parts-hud"></div>
 <div id="armor-bar"><div id="armor-fill"></div><span id="armor-text">ZIRH 100%</span></div>
 
 <div id="weapons-hud">
@@ -1343,6 +1376,29 @@
   <div class="wep-slot ready" id="slot-adrenaline">⏱️ [F] ODAK</div>
   <div class="wep-slot ready" id="slot-strike">🚁 [U] HAVA SALDIRISI</div>
   <div class="wep-slot ready" id="slot-shunt">💥 [Z/C] YAN SHUNT</div>
+</div>
+
+ <div id="pause-menu" role="dialog" aria-modal="true" aria-label="Duraklatma menüsü">
+  <div class="pause-card">
+    <div class="pause-title"><span class="pause-icon"></span>DURAKLATILDI</div>
+    <div id="pause-info"></div>
+    <button class="pause-item primary" onclick="pauseAction('resume')">▶ DEVAM ET <span class="pause-key">ESC</span></button>
+    <button class="pause-item" onclick="pauseAction('recover')">🛟 ARACI PİSTE GERİ KOY</button>
+    <button class="pause-item" onclick="pauseAction('restart')">🔄 YARIŞI YENİDEN BAŞLAT</button>
+    <button class="pause-item" onclick="pauseAction('audio')">🔊 SES AYARLARI</button>
+    <button class="pause-item" onclick="pauseAction('controls')">⌨ KONTROLLER</button>
+    <div id="pause-controls">
+      <b>KLAVYE</b><br>
+      W/S gaz-fren · A/D direksiyon · Space el freni · Shift nitro · Sol tık minigun · Sağ tık/K roket<br>
+      E EMP · B mayın · Q yağ · X diken · Z/C yan darbe · F odak · U hava saldırısı · T tombstone · L duman<br>
+      N kamera · V geri bak · Y hayalet · G garaj · J ses · M müzik · H hava durumu · P ateşkes · R sıfırla · F1 tuş listesi<br>
+      <b>GAMEPAD</b><br>
+      RT gaz · LT fren · Sol çubuk direksiyon · A el freni · B nitro · X minigun · Y roket · LB yağ · RB mayın<br>
+      D-pad ↑ EMP · ↓ diken · ←/→ yan darbe · L3 odak · R3 hava saldırısı · Back kamera · Start duraklat
+    </div>
+    <button class="pause-item" onclick="pauseAction('menu')">🏠 ANA MENÜ</button>
+    <div class="pause-hint">İlerlemen otomatik kaydedilir · ↑↓ / D-pad ile gezin, Enter / A ile seç</div>
+  </div>
 </div>
 
 <div id="hud-toggle" onclick="document.body.classList.toggle('show-keys')">⌨ TUŞLAR [F1]</div>
@@ -1369,13 +1425,14 @@
   <span class="key">P</span> Ateşkes &middot; 
   <span class="key">L</span> Duman &middot; 
   <span class="key">Y</span> Hayalet &middot; 
-  <span class="key">R</span> Sıfırla<br>
+  <span class="key">R</span> Sıfırla &middot; 
+  <span class="key">ESC</span> Duraklat<br>
   <span id="dbg"></span>
 </div>
 
 <div id="nitro-bar"><div id="nitro-fill"></div><span id="nitro-text">NITRO %100</span></div>
 <div id="ammo-bar"><div id="ammo-fill"></div></div>
-<div id="speed"><span id="spd">0</span><small> km/s</small></div>
+<div id="speed"><span id="engine-state" title="Hasar nedeniyle düşen motor gücü"></span> <span id="spd">0</span><small> km/s</small></div>
 
 <!-- SES AYARLARI MODALI -->
 <div id="audio-modal" onclick="if(event.target === this) closeAudioModal()">

@@ -3447,6 +3447,7 @@ function detachArmorPart(partKey, customImpulse = null) {
 
  detachedParts.add(partKey);
  mesh.visible = false;
+ updatePartsHUD();
 
  const cfg = MODULAR_PARTS[partKey] || { mass: 30, impulse: new CANNON.Vec3(0, 2, 0) };
  mesh.updateMatrixWorld(true);
@@ -3615,8 +3616,19 @@ function toggleGodMode() {
 }
 window.toggleGodMode = toggleGodMode;
 
+// Kopan zırh parçalarının oyuncuya etkisi: yan plakalar/tavan gidince alınan hasar artar
+function playerDamageTakenMul() {
+ return 1 + (detachedParts.has('part_armor_l') ? 0.15 : 0) + (detachedParts.has('part_armor_r') ? 0.15 : 0) + (detachedParts.has('part_roof') ? 0.1 : 0);
+}
+// Can %50'nin altına inince motor gücü/azami hız düşer (%0 canda %80)
+function healthSpeedFactor(hp, maxHp) {
+ const r = Math.max(0, hp / maxHp);
+ return r >= 0.5 ? 1 : 0.8 + 0.4 * r;
+}
+
 function applyCarDamage(dmg, contactPoint = null, normal = null) {
  if (carHealth <= 0 || godMode || raceFinished) return;
+ dmg *= playerDamageTakenMul();
 
  if (shieldTimer > 0) {
   if (contactPoint) spawnSparks(new T.Vector3(contactPoint.x, contactPoint.y, contactPoint.z), new T.Vector3(0, 1, 0), 15);
@@ -3692,7 +3704,7 @@ chassisBody.addEventListener('collide', e => {
  const otherBody = e.contact.bi === chassisBody ? e.contact.bj : e.contact.bi;
  const ramImpact = Math.abs(relVel);
  if (otherBody && otherBody.targetData && otherBody.targetData.onHit) {
-  const ramMult = (customization.bumperKit === 'ram_plow' ? 3.0 : (customization.bumperKit === 'reinforced_grate' ? 2.0 : 1.3));
+  const ramMult = (customization.bumperKit === 'ram_plow' ? 3.0 : (customization.bumperKit === 'reinforced_grate' ? 2.0 : 1.3)) * (detachedParts.has('part_spikes') ? 0.6 : 1);
   otherBody.targetData.onHit(ramImpact * 12 * ramMult);
  }
 
@@ -3928,12 +3940,16 @@ function checkOilIgnition(hitPos, radius = 3.8) {
 const oilGeo = new T.CylinderGeometry(2.4, 2.4, 0.03, 14);
 const oilMat = new T.MeshStandardMaterial({ color: '#07080a', roughness: 0.15, metalness: 0.9 });
 
-function deployOilSlick() {
- const rearPos = new T.Vector3(0, 0.03, -2.4).applyQuaternion(carGroup.quaternion).add(carGroup.position);
+function spawnOilSlick(rearPos, owner) {
  const m = new T.Mesh(oilGeo, oilMat);
  m.position.set(rearPos.x, 0.03, rearPos.z);
  scene.add(m);
- activeOilSlicks.push({ mesh: m, pos: new T.Vector3(rearPos.x, 0, rearPos.z), radius: 2.5, life: 25.0 });
+ activeOilSlicks.push({ mesh: m, pos: new T.Vector3(rearPos.x, 0, rearPos.z), radius: 2.5, life: 25.0, owner });
+}
+
+function deployOilSlick() {
+ const rearPos = new T.Vector3(0, 0.03, -2.4).applyQuaternion(carGroup.quaternion).add(carGroup.position);
+ spawnOilSlick(rearPos, null);
  Snd.playHiss();
  showBanner('YOLA MOTOR YAĞI DÖKÜLDÜ!', 'buff-sword');
  showRadioMessage('Arkamıza siyah yağ bıraktım, basan kayıp savrulacak!');
@@ -4476,6 +4492,7 @@ function applyAIDamage(ai, dmg, hitPt = null, hitNorm = null) {
   return;
  }
 
+ dmg *= 1 + (ai.detachedParts.has('part_armor_l') ? 0.15 : 0) + (ai.detachedParts.has('part_armor_r') ? 0.15 : 0) + (ai.detachedParts.has('part_roof') ? 0.1 : 0);
  ai.health = Math.max(0, ai.health - dmg);
  if (!ai.isNemesis && ai.health > 0 && Math.random() < 0.7) {
   ai.isNemesis = true;
@@ -4588,6 +4605,7 @@ function updateAIOpponents(dt) {
   }
 
   for (let oil of activeOilSlicks) {
+   if (oil.owner === ai) continue; // kendi döktüğü yağda savrulmasın
    const dx = aiPos.x - oil.pos.x;
    const dz = aiPos.z - oil.pos.z;
    if (Math.sqrt(dx * dx + dz * dz) < oil.radius && ai.oilSpinTimer <= 0) {
@@ -4675,7 +4693,7 @@ function updateAIOpponents(dt) {
   if (ai.isNemesis) targetSpeedMs *= 1.15; // Nemesis daha hızlı takip eder!
   if (ai.flatTireTimer > 0) targetSpeedMs *= 0.6;
   if (ai.acidTimer > 0) targetSpeedMs *= 0.65;
-  targetSpeedMs *= diffCfg().speed;
+  targetSpeedMs *= diffCfg().speed * healthSpeedFactor(ai.health, 100);
 
   if (speed < targetSpeedMs) {
    const forcePct = Math.max(0, 1 - speed / targetSpeedMs);
@@ -4714,8 +4732,80 @@ function updateAIOpponents(dt) {
    ai.rightGun.barrelGroup.rotation.z += 40 * dt;
   }
 
+  updateAIWeapons(ai, dt, distToPlayer, aimDot, fwd);
+
   if (ai.overdriveTimer > 0) ai.overdriveTimer -= dt;
   if (ai.shieldTimer > 0) ai.shieldTimer -= dt;
+ }
+ updatePlayerHazards(dt);
+}
+
+/* ---------- Rakip özel silahları (mayın, yağ, güdümlü roket) ---------- */
+const AI_WEAPON_COOLDOWN = { easy: 24, normal: 15, hard: 9 };
+const PLAYER_TARGET = { name: 'FRANKENSTEIN', get chassisBody() { return chassisBody; }, get isDead() { return carHealth <= 0; } };
+const _aiToPlayer = new T.Vector3();
+
+function updateAIWeapons(ai, dt, distToPlayer, aimDot, fwd) {
+ if (!aiFireEnabled || raceFinished || carHealth <= 0 || ai.empStunTimer > 0) return;
+ if (ai.weaponTimer === undefined) ai.weaponTimer = 6 + Math.random() * 8;
+ ai.weaponTimer -= dt;
+ if (ai.weaponTimer > 0) return;
+
+ const diff = raceSetting('difficulty');
+ const cooldown = (AI_WEAPON_COOLDOWN[diff] || 15) * (raceSetting('aiAggression') === 'brutal' ? 0.75 : 1);
+ const pPos = chassisBody.position, aPos = ai.chassisBody.position;
+ _aiToPlayer.set(pPos.x - aPos.x, 0, pPos.z - aPos.z).normalize();
+ const behind = fwd.x * _aiToPlayer.x + fwd.z * _aiToPlayer.z < -0.5;
+
+ if (behind && distToPlayer < 35) {
+  const rear = new T.Vector3(0, 0.15, -2.6).applyQuaternion(ai.meshGroup.quaternion).add(ai.meshGroup.position);
+  if (Math.random() < 0.5) {
+   spawnMine(rear, ai);
+   Snd.playMineBeep();
+   showBanner(`💣 ${ai.name} ARKASINA MAYIN BIRAKTI!`, 'buff-sword');
+  } else {
+   spawnOilSlick(rear, ai);
+   Snd.playHiss();
+   showBanner(`🛢️ ${ai.name} YOLA YAĞ DÖKTÜ!`, 'buff-sword');
+  }
+  ai.weaponTimer = cooldown * (0.8 + Math.random() * 0.4);
+ } else if (diff !== 'easy' && aimDot > 0.85 && distToPlayer > 20 && distToPlayer < 90) {
+  fireAIRocket(ai, fwd);
+  ai.weaponTimer = cooldown * (0.8 + Math.random() * 0.4);
+ } else {
+  ai.weaponTimer = 1.0; // uygun pozisyon yok, kısa süre sonra tekrar dene
+ }
+}
+
+function fireAIRocket(ai, fwd) {
+ const spawnPos = new T.Vector3(0, 1.0, 1.4).applyQuaternion(ai.meshGroup.quaternion).add(ai.meshGroup.position);
+ const rMesh = new T.Mesh(rocketGeo, rocketMat);
+ rMesh.position.copy(spawnPos);
+ rMesh.quaternion.copy(ai.meshGroup.quaternion);
+ scene.add(rMesh);
+ activeRockets.push({
+  mesh: rMesh, pos: spawnPos.clone(), vel: new T.Vector3(fwd.x, fwd.y, fwd.z).multiplyScalar(70),
+  target: PLAYER_TARGET, life: 3.2, ownerBody: ai.chassisBody, homing: 1.6, speed: 78, fromAI: ai
+ });
+ Snd.playRocketLaunch();
+ showBanner(`🚀 ${ai.name} SANA ROKET KİLİTLEDİ! KAÇ!`, 'buff-sword');
+ rumble(0.3, 150);
+}
+
+// Rakiplerin döktüğü yağ oyuncuyu da kaydırır (önceden oyuncu için yağ kayması hiç tanımlı değildi)
+function updatePlayerHazards(dt) {
+ if (playerOilTimer > 0) return;
+ const pPos = chassisBody.position;
+ for (const oil of activeOilSlicks) {
+  if (!oil.owner) continue;
+  const dx = pPos.x - oil.pos.x, dz = pPos.z - oil.pos.z;
+  if (dx * dx + dz * dz < oil.radius * oil.radius) {
+   playerOilTimer = 1.8;
+   chassisBody.angularVelocity.y += (Math.random() < 0.5 ? 3.5 : -3.5);
+   showBanner('🛢️ YAĞA BASTIN! SAVRULUYORSUN!', 'buff-sword');
+   rumble(0.6, 300);
+   break;
+  }
  }
 }
 
@@ -5062,10 +5152,16 @@ let playerOilTimer = 0;
 
 addEventListener('keydown', e => {
  if (e.key === 'F1') { e.preventDefault(); document.body.classList.toggle('show-keys'); return; }
+ if (e.key === 'Escape') { handleEscape(); return; }
+ if (isPaused) {
+  // Menüde ok tuşları + Enter ile gezinme
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); movePauseFocus(e.key === 'ArrowDown' ? 1 : -1); }
+  else if (e.key === 'Enter') { e.preventDefault(); activatePauseItem(); }
+  return;
+ }
  const k = e.key.toLowerCase();
  KEYS[k] = true;
  Snd.init();
- if (e.key === 'Escape') { closeAudioModal(); }
  handleKeyAction(k);
 });
 
@@ -5176,6 +5272,7 @@ function resetCar() {
  for (let d of debrisList) { world.removeBody(d.body); scene.remove(d.mesh); }
  debrisList.length = 0;
  detachedParts.clear();
+ updatePartsHUD();
 
  if (carGroup) {
   for (let key of Object.keys(MODULAR_PARTS)) {
@@ -5305,7 +5402,8 @@ function spawnDriftSmoke(pos) {
    ==========================================================
    RT gaz · LT fren/geri · Sol çubuk direksiyon · A el freni · B nitro · X minigun · Y roket
    LB yağ · RB mayın · D-pad ↑ EMP · ↓ diken · ←/→ yan shunt · L3 odak · R3 hava saldırısı
-   Back/Select kamera · Start sıfırla. Menüde A = Ölüm Yarışı, X = Kariyer. */
+   Back/Select kamera · Start duraklat. Menüde A = Ölüm Yarışı, X = Kariyer.
+   Duraklatma menüsünde: D-pad ↑↓ gezin, A seç, B/Start devam. */
 const GP = { active: false, steer: 0, throttle: 0, brake: 0, handbrake: false, nitro: false, fire: false, prev: [], pad: null };
 const GP_ACTIONS = { 3: 'k', 4: 'q', 5: 'b', 8: 'n', 10: 'f', 11: 'u', 12: 'e', 13: 'x', 14: 'z', 15: 'c' };
 function pollGamepad() {
@@ -5322,23 +5420,31 @@ function pollGamepad() {
  const val = i => (b[i] ? (typeof b[i].value === 'number' ? b[i].value : (b[i].pressed ? 1 : 0)) : 0);
  const pressed = i => !!(b[i] && b[i].pressed);
  const ax = gp.axes[0] || 0;
+ if (isPaused) { GP.throttle = GP.brake = 0; GP.handbrake = GP.nitro = GP.fire = false; }
  GP.steer = Math.abs(ax) > 0.12 ? Math.sign(ax) * (Math.abs(ax) - 0.12) / 0.88 : 0;
- GP.throttle = val(7);
- GP.brake = val(6);
- GP.handbrake = pressed(0);
- GP.nitro = pressed(1);
- GP.fire = pressed(2);
+ if (!isPaused) {
+  GP.throttle = val(7);
+  GP.brake = val(6);
+  GP.handbrake = pressed(0);
+  GP.nitro = pressed(1);
+  GP.fire = pressed(2);
+ }
  for (let i = 0; i < b.length; i++) {
   const now = pressed(i);
   if (now && !GP.prev[i]) {
    Snd.init();
-   if (!isGameStarted && !garageModeActive) {
+   if (isPaused) {
+    if (i === 12) movePauseFocus(-1);
+    else if (i === 13) movePauseFocus(1);
+    else if (i === 0) activatePauseItem();
+    else if (i === 1 || i === 9) setPaused(false);
+   } else if (i === 9 && isGameStarted && !garageModeActive) {
+    setPaused(true);
+   } else if (!isGameStarted && !garageModeActive) {
     if (i === 0) setGameMode('deathrace', true);
     if (i === 2) setGameMode('career', true);
    } else if (GP_ACTIONS[i]) {
     handleKeyAction(GP_ACTIONS[i]);
-   } else if (i === 9) {
-    KEYS['r'] = true; // updateControls tüketir
    }
   }
   GP.prev[i] = now;
@@ -5502,10 +5608,11 @@ function updateControls(dt) {
   nitroAmount = Math.min(100, nitroAmount + 5.0 * dt);
  }
 
- const baseTopSpeed = 72 + (upgrades.engine - 1) * 12; // 72 m/s = 260 km/h taban, nitro ile 365+ km/h
+ const hpFactor = healthSpeedFactor(carHealth, 100 + (upgrades.armor - 1) * 35);
+ const baseTopSpeed = (72 + (upgrades.engine - 1) * 12) * hpFactor; // 72 m/s = 260 km/h taban, nitro ile 365+ km/h
  const topSpeed = usingNitro ? baseTopSpeed * 1.45 : baseTopSpeed;
  const falloff = Math.max(0, 1 - speed / topSpeed);
- const baseEngineForce = 9600 * (1 + (upgrades.engine - 1) * 0.25);
+ const baseEngineForce = 9600 * (1 + (upgrades.engine - 1) * 0.25) * hpFactor;
  const engineMultiplier = usingNitro ? 1.85 : 1.0;
  const engineForce = forward * baseEngineForce * falloff * engineMultiplier;
 
@@ -5835,6 +5942,16 @@ function deployStickyMine() {
  lastMineTime = now;
 
  const rearPos = new T.Vector3(0, 0.15, -2.4).applyQuaternion(carGroup.quaternion).add(carGroup.position);
+ spawnMine(rearPos, null);
+
+ Snd.playMineBeep();
+ showBanner('💣 MANYETİK YAPISKAN MAYIN BIRAKILDI!', 'buff-sword');
+ showRadioMessage('Manyetik mayın yola bırakıldı! Yaklaşan araca yapışıp patlayacak!', 'case');
+}
+window.deployStickyMine = deployStickyMine;
+
+// owner: null = oyuncunun mayını (rakiplere yapışır), ai = rakibin mayını (oyuncuya yapışır)
+function spawnMine(rearPos, owner) {
  const mineGroup = new T.Group();
  mineGroup.position.copy(rearPos);
 
@@ -5847,13 +5964,8 @@ function deployStickyMine() {
  mineGroup.add(led);
 
  scene.add(mineGroup);
- activeMines.push({ group: mineGroup, pos: rearPos.clone(), led, life: 30.0 });
-
- Snd.playMineBeep();
- showBanner('💣 MANYETİK YAPISKAN MAYIN BIRAKILDI!', 'buff-sword');
- showRadioMessage('Manyetik mayın yola bırakıldı! Yaklaşan araca yapışıp patlayacak!', 'case');
+ activeMines.push({ group: mineGroup, pos: rearPos.clone(), led, life: 30.0, owner, armTime: 0.8 });
 }
-window.deployStickyMine = deployStickyMine;
 
 function updateMines(dt) {
  for (let i = activeMines.length - 1; i >= 0; i--) {
@@ -5864,6 +5976,28 @@ function updateMines(dt) {
   if (m.life <= 0) {
    scene.remove(m.group);
    activeMines.splice(i, 1);
+   continue;
+  }
+
+  if (m.armTime > 0) { m.armTime -= dt; continue; } // bırakan araç uzaklaşana kadar pasif
+
+  // Rakip mayını: oyuncuya yapışır
+  if (m.owner) {
+   const pPos = chassisBody.position;
+   const dist = m.pos.distanceTo(pPos);
+   if (dist < 6.8 && carHealth > 0) {
+    const pull = new T.Vector3().subVectors(pPos, m.pos).normalize().multiplyScalar(14 * dt);
+    m.pos.add(pull);
+    m.group.position.copy(m.pos);
+    if (dist < 2.2) {
+     createExplosion(m.pos, 9, 3600);
+     applyCarDamage(22 * diffCfg().dmg, m.pos, new T.Vector3(0, 1, 0));
+     rumble(1, 350);
+     scene.remove(m.group);
+     activeMines.splice(i, 1);
+     showBanner(`💣 ${m.owner.name} MAYININA BASTIN!`, 'buff-sword');
+    }
+   }
    continue;
   }
 
@@ -6586,6 +6720,7 @@ function updateRatingsAndRanks(dt) {
  }
 
  if (posValEl) posValEl.textContent = playerRank;
+ updatePartsSpeedHUD();
 
  const maxHP = 100 + (upgrades.armor - 1) * 35;
  const hpPct = Math.round((carHealth / maxHP) * 100);
@@ -7243,7 +7378,7 @@ function updateBulletsAndFX(dt) {
   if (r.target && !r.target.isDead) {
    const targetPos = r.target.body ? r.target.body.position : r.target.chassisBody.position;
    const toTarget = _tmpV3a.set(targetPos.x - r.pos.x, targetPos.y - r.pos.y, targetPos.z - r.pos.z).normalize();
-   r.vel.lerp(toTarget.multiplyScalar(100), 4.5 * dt);
+   r.vel.lerp(toTarget.multiplyScalar(r.speed || 100), (r.homing || 4.5) * dt);
    r.mesh.quaternion.setFromUnitVectors(_zAxis, _tmpV3b.copy(r.vel).normalize());
   }
 
@@ -7256,9 +7391,10 @@ function updateBulletsAndFX(dt) {
   const result = _rayResult;
   world.raycastClosest(_rayFrom, _rayTo, _rayOpts, result);
 
-  if (result.hasHit && result.body !== chassisBody) {
+  if (result.hasHit && result.body !== (r.ownerBody || chassisBody)) {
    const hitPt = new T.Vector3(result.hitPointWorld.x, result.hitPointWorld.y, result.hitPointWorld.z);
-   createExplosion(hitPt, 11, 5200);
+   createExplosion(hitPt, r.fromAI ? 8 : 11, r.fromAI ? 3600 : 5200);
+   if (r.fromAI && result.body === chassisBody) { applyCarDamage(28 * diffCfg().dmg, hitPt); rumble(1, 400); }
 
    if (result.body.targetData && result.body.targetData.onHit) {
     result.body.targetData.onHit(65, hitPt, new T.Vector3(0, 1, 0));
@@ -7601,6 +7737,8 @@ function loop(now) {
  // yapıp ana thread'i saniyelerce kilitlemesi ve menü tıklamalarını geciktirmesi engellenir.
  if (!shadersReady) { last = now; return; }
  pollGamepad();
+ // Duraklatıldığında simülasyon ve çizim durur; canvas son kareyi göstermeye devam eder
+ if (isPaused) { last = now; return; }
  updateAutoResolution(rawDt * 1000);
 
  // Başlangıç mod seçim penceresi açıkken ve garajda değilken:
@@ -7852,6 +7990,129 @@ function loop(now) {
 }
 
 /* ==========================================================
+   DURAKLATMA MENÜSÜ (ESC / gamepad Start)
+   ========================================================== */
+let isPaused = false;
+let pauseStartedAt = 0;
+let pauseFocus = 0;
+const pauseMenuEl = document.getElementById('pause-menu');
+const MODE_NAMES = { deathrace: 'ÖLÜM YARIŞI', peaceful: 'BARIŞÇIL TEST', career: 'KARİYER' };
+
+function pauseItems() { return pauseMenuEl ? [...pauseMenuEl.querySelectorAll('.pause-item')] : []; }
+function movePauseFocus(dir) {
+ const items = pauseItems();
+ if (!items.length) return;
+ pauseFocus = (pauseFocus + dir + items.length) % items.length;
+ items.forEach((el, i) => el.classList.toggle('focused', i === pauseFocus));
+ items[pauseFocus].focus({ preventScroll: true });
+}
+function activatePauseItem() {
+ const items = pauseItems();
+ if (items[pauseFocus]) items[pauseFocus].click();
+}
+
+function setPaused(p) {
+ if (p === isPaused) return;
+ if (p && (!isGameStarted || garageModeActive || raceFinished)) return;
+ isPaused = p;
+ document.body.classList.toggle('paused', p);
+ if (p) {
+  pauseStartedAt = performance.now();
+  try { if (Snd.ctx && Snd.ctx.state === 'running') Snd.ctx.suspend(); } catch (e) {}
+  try { if ('speechSynthesis' in window) speechSynthesis.pause(); } catch (e) {}
+  const info = document.getElementById('pause-info');
+  if (info) {
+   const mode = activeCareerEvent ? `KARİYER · ${activeCareerEvent.name}` : (MODE_NAMES[currentGameMode] || currentGameMode);
+   info.textContent = `${mode} · TUR ${lapCount}/${MAX_LAPS} · ${playerRank}. SIRA · ${formatTime(performance.now() - lapStartTime)}`;
+  }
+  const ctl = document.getElementById('pause-controls');
+  if (ctl) ctl.style.display = 'none';
+  pauseFocus = 0;
+  movePauseFocus(0);
+ } else {
+  // Duraklamada geçen süre tur süresine ve hayalet kaydına eklenmesin
+  lapStartTime += performance.now() - pauseStartedAt;
+  try { if (Snd.ctx && Snd.ctx.state === 'suspended') Snd.ctx.resume(); } catch (e) {}
+  try { if ('speechSynthesis' in window) speechSynthesis.resume(); } catch (e) {}
+  for (const k in KEYS) KEYS[k] = false;
+  isMouseDown = false;
+ }
+}
+window.setPaused = setPaused;
+
+function handleEscape() {
+ const audio = document.getElementById('audio-modal');
+ if (audio && getComputedStyle(audio).display !== 'none') { closeAudioModal(); return; }
+ if (garageModeActive) { toggleGarage(); return; }
+ if (isPaused) {
+  const ctl = document.getElementById('pause-controls');
+  if (ctl && ctl.style.display !== 'none') { ctl.style.display = 'none'; return; }
+  setPaused(false);
+  return;
+ }
+ setPaused(true);
+}
+
+// Aracı en yakın pist noktasına, pist yönüne bakacak şekilde geri koyar (yarış durumu korunur)
+function recoverCar() {
+ const info = getTrackDistance(chassisBody.position);
+ const p = TRACK_POINTS[info.index];
+ const n = TRACK_POINTS[(info.index + 3) % TRACK_POINTS.length];
+ chassisBody.position.set(p.x, 1.2, p.z);
+ chassisBody.quaternion.setFromEuler(0, Math.atan2(n.x - p.x, n.z - p.z), 0);
+ chassisBody.velocity.set(0, 0, 0);
+ chassisBody.angularVelocity.set(0, 0, 0);
+ showBanner('🛟 ARAÇ PİSTE GERİ KONULDU', 'buff-shield');
+}
+window.recoverCar = recoverCar;
+
+function pauseAction(action) {
+ if (action === 'resume') setPaused(false);
+ else if (action === 'recover') { recoverCar(); setPaused(false); }
+ else if (action === 'restart') {
+  saveProgress();
+  const mode = activeCareerEvent ? 'career' : currentGameMode;
+  location.href = location.pathname + '?start=' + encodeURIComponent(mode) + (/[?&]perf\b/.test(location.search) ? '&perf' : '');
+ }
+ else if (action === 'audio') toggleAudioModal();
+ else if (action === 'controls') {
+  const ctl = document.getElementById('pause-controls');
+  if (ctl) ctl.style.display = ctl.style.display === 'none' ? 'block' : 'none';
+ }
+ else if (action === 'menu') { saveProgress(); location.href = location.pathname; }
+}
+window.pauseAction = pauseAction;
+
+// Sekme/pencere arka plana geçince yarış otomatik duraklar
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
+
+/* ---------- Araç parça durumu göstergesi ---------- */
+const PART_HUD = [['part_spikes', 'ÖN'], ['part_armor_l', 'SOL'], ['part_armor_r', 'SAĞ'], ['part_roof', 'TAVAN'], ['part_tombstone', 'ARKA']];
+function updatePartsHUD() {
+ const el = document.getElementById('parts-hud');
+ if (!el) return;
+ // Sabit etiketler (kullanıcı girdisi yok) — innerHTML güvenli
+ el.innerHTML = PART_HUD.map(([k, label]) => `<span class="part-chip${detachedParts.has(k) ? ' lost' : ''}">${label}</span>`).join('') +
+  `<span id="parts-effect">${partsEffectText()}</span>`;
+}
+function partsEffectText() {
+ const dm = Math.round((playerDamageTakenMul() - 1) * 100);
+ const parts = [];
+ if (dm > 0) parts.push(`HASAR +%${dm}`);
+ if (detachedParts.has('part_spikes')) parts.push('ÇARPMA −%40');
+ return parts.join(' · ');
+}
+let lastPartsSpeedTxt = '';
+function updatePartsSpeedHUD() {
+ const f = healthSpeedFactor(carHealth, 100 + (upgrades.armor - 1) * 35);
+ const txt = f < 0.995 ? `MOTOR %${Math.round(f * 100)}` : '';
+ if (txt === lastPartsSpeedTxt) return;
+ lastPartsSpeedTxt = txt;
+ const el = document.getElementById('engine-state');
+ if (el) { el.textContent = txt; el.style.display = txt ? 'inline-block' : 'none'; }
+}
+
+/* ==========================================================
    PERFORMANS TEŞHİS PANELİ (?perf)
    ==========================================================
    index.html?perf ile açıldığında sol üstte FPS, kare süresi ve son donmalar gösterilir.
@@ -8098,7 +8359,16 @@ setInterval(saveProgress, 5000);
 addEventListener('pagehide', saveProgress);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveProgress(); });
 
+updatePartsHUD();
+
 window.isGameReady = true;
+// "Yarışı yeniden başlat" ?start=<mod> ile gelir: menüyü atlayıp doğrudan başlat
+{
+ const startMode = new URLSearchParams(location.search).get('start');
+ if (startMode && ['deathrace', 'peaceful', 'career'].includes(startMode) && !window.pendingGameMode) {
+  window.pendingGameMode = { mode: startMode, close: true };
+ }
+}
 if (window.pendingGameMode) {
  const p = window.pendingGameMode;
  window.pendingGameMode = null;

@@ -385,3 +385,11 @@
 - Garaj açıkken (`body.garage-open`) yarış HUD'u gizlenir.
 - Kariyer kartında etap ilerleme noktaları ve etap detayları; garaj seviye etiketleri ilk açılışta da doğru (`SEVİYE n/5`); garaj bakiyesi satır kırmaz.
 - Stil düzeltmeleri `index.html` içindeki "HUD YERLEŞİM DÜZENİ" CSS bloğunda toplu.
+
+## [Feature] Temel Eksikler: Duraklatma, Parça Hasarı Etkileri, Rakip Silahları
+- Yol haritası: `YOL_HARITASI.md` (tüm planlanan özellikler, durum işaretleriyle).
+- **Duraklatma** (`setPaused`, `handleEscape`, `pauseAction`): ESC / gamepad Start / üst bar ❚❚. ESC önceliği: ses modalı → garaj → kontroller paneli → devam. Menü ok tuşları/D-pad + Enter/A ile gezilir. Duraklamada AudioContext ve speechSynthesis askıya alınır, `lapStartTime` duraklama süresi kadar kaydırılır. Sekme gizlenince otomatik duraklar. Gamepad Start artık sıfırlama değil duraklatma.
+- **Aracı piste geri koy** (`recoverCar`): en yakın pist noktasına, pist yönüne bakacak şekilde; yarış durumu korunur.
+- **Yeniden başlat**: `?start=deathrace|peaceful|career` ile menüsüz başlar.
+- **Parça etkileri**: `playerDamageTakenMul()` (sol/sağ zırh +%15, tavan +%10), ön mahmuz kaybı çarpma hasarı x0.6, `healthSpeedFactor()` can %50 altında motor gücü ve azami hız düşer. AI'lara da uygulanır. HUD: `#parts-hud` çipleri + `#engine-state`.
+- **Rakip silahları** (`updateAIWeapons`): oyuncu 35 m içinde arkadaysa mayın/yağ, 20-90 m önde ve nişanlıysa güdümlü roket (kolay zorlukta yok). Bekleme: kolay 24 / normal 15 / zor 9 sn (vahşi x0.75). Rakip mayınları 0.8 sn sonra aktifleşir ve oyuncuya yapışır; rakip yağı oyuncuyu kaydırır (`updatePlayerHazards`); roketlerde `ownerBody` ile atanın kendisi vurulmaz.
