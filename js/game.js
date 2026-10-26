@@ -1035,13 +1035,17 @@ const upgrades = {
 };
 
 let savedRaceState = null;
+const GARAGE_POS = { x: -3200, z: -3200 };
+let garageFromMenu = false;
 function toggleGarage() {
  const isOpen = garageModalEl.classList.toggle('open');
  garageModeActive = isOpen;
  document.body.classList.toggle('garage-open', isOpen);
+ const modeModal = document.getElementById('mode-select-modal');
  if (isOpen) {
-  isGameStarted = true;
-  window.isGameStarted = true;
+  // Menüden girildiyse yarış başlamış sayılmaz; menü kapanır, garajdan çıkınca menüye dönülür
+  garageFromMenu = !isGameStarted;
+  if (garageFromMenu && modeModal) modeModal.classList.remove('open', 'closing');
   // 1. Yarış konumunu ve hızını kaydet
   savedRaceState = {
    pos: chassisBody.position.clone(),
@@ -1050,7 +1054,7 @@ function toggleGarage() {
   };
 
   // 2. Aracı Showroom Turntable zeminine (Y = -350) ışınla
-  chassisBody.position.set(0, -349.15, 0);
+  chassisBody.position.set(GARAGE_POS.x, 0.85, GARAGE_POS.z);
   chassisBody.quaternion.set(0, 0, 0, 1);
   chassisBody.velocity.set(0, 0, 0);
   chassisBody.angularVelocity.set(0, 0, 0);
@@ -1086,6 +1090,10 @@ function toggleGarage() {
 
   if (typeof garageShowroomGroup !== 'undefined') {
    garageShowroomGroup.visible = false;
+  }
+  if (garageFromMenu) {
+   garageFromMenu = false;
+   if (modeModal) modeModal.classList.add('open');
   }
 
   Snd.playGarageShutter();
@@ -3110,7 +3118,10 @@ for (let i = 0; i < 4; i++) {
    WEYLAND MOTORWORKS — 3D ATÖLYE & GARAJ SHOWROOM SİSTEMİ
    ========================================================== */
 const garageShowroomGroup = new T.Group();
-garageShowroomGroup.position.set(0, -350, 0);
+// Garaj önceden y = -350'deydi: ana zemin sonsuz bir CANNON.Plane olduğu için onun altındaki araç
+// "yere gömülmüş" sayılıp gökyüzüne fırlatılıyordu (garajda araç karanlıkta süzülüyordu).
+// Artık zemin seviyesinde, pistten ~4.5 km uzakta (sis mesafesinin çok dışında).
+garageShowroomGroup.position.set(GARAGE_POS.x, 0, GARAGE_POS.z);
 garageShowroomGroup.visible = false;
 scene.add(garageShowroomGroup);
 garageShowroomGroup.userData.staticBatch = true;
@@ -3128,11 +3139,7 @@ garageFloorMesh.receiveShadow = true;
 garageShowroomGroup.add(garageFloorMesh);
 
 // Showroom Fiziksel Zemin Gövdesi (Cannon-es)
-const garageFloorBody = new CANNON.Body({ mass: 0, material: groundMat });
-garageFloorBody.addShape(new CANNON.Plane());
-garageFloorBody.position.set(0, -350, 0);
-garageFloorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(garageFloorBody);
+// Garaj zemini için ayrı fizik gövdesi gerekmez: ana zemin düzlemi (y = 0) garajın altında da var.
 
 // 2. Dönen Hidrolik Lift & Döner Platform (Turntable)
 const turntableGroup = new T.Group();
@@ -4729,7 +4736,7 @@ function updateAIOpponents(dt) {
  const playerPos = chassisBody.position;
 
  for (let ai of aiOpponents) {
-  if (ai.isDead || raceCountdown > 0) {
+  if (ai.isDead || raceCountdown > 0 || !isGameStarted) { // yarış başlamadan (ör. menüden garaja girildiğinde) rakipler bekler
    for (let i = 0; i < 4; i++) { ai.vehicle.applyEngineForce(0, i); ai.vehicle.setBrake(ai.isDead ? 50 : 80, i); }
    continue;
   }
@@ -5016,6 +5023,10 @@ loadGLTFModel('car_body').then(model => {
 
 loadGLTFModel('wheel').then(wheelModel => {
  wheelModel.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+ // Görsel tekerlek, fizik tekerleğinin yarıçapına ölçeklenir (model farklı boyutta gelse bile yere gömülmez/havada durmaz)
+ const wheelBox = new T.Box3().setFromObject(wheelModel);
+ const modelRadius = (wheelBox.max.y - wheelBox.min.y) / 2;
+ if (modelRadius > 0.01) wheelModel.scale.setScalar(wheelOptions.radius / modelRadius);
  for (let i = 0; i < 4; i++) wheelMeshes[i].add(wheelModel.clone(true));
  for (let ai of aiOpponents) {
   for (let i = 0; i < 4; i++) ai.wheelMeshes[i].add(wheelModel.clone(true));
@@ -6805,7 +6816,7 @@ function finishRace() {
 }
 
 function updateCheckpoints(dt) {
- if (raceFinished || raceCountdown > 0) return;
+ if (raceFinished || raceCountdown > 0 || !isGameStarted) return;
  const carP = chassisBody.position;
  const cp = CHECKPOINTS[currentCheckpoint];
  const dx = carP.x - cp.pos.x;
@@ -8033,6 +8044,7 @@ let lastMenuRender = 0;
 function loop(now) {
  requestAnimationFrame(loop);
  const rawDt = Math.min(0.033, (now - last) / 1000);
+ const realDt = Math.min(0.25, (now - last) / 1000); // geri sayım gibi gerçek zamanlı sayaçlar için
  last = now;
  const dt = rawDt * timeScale;
 
@@ -8042,7 +8054,7 @@ function loop(now) {
  pollGamepad();
  // Duraklatıldığında simülasyon ve çizim durur; canvas son kareyi göstermeye devam eder
  if (isPaused) { last = now; return; }
- if (isGameStarted && !garageModeActive) updateCountdown(rawDt);
+ if (isGameStarted && !garageModeActive) updateCountdown(realDt);
  updateAutoResolution(rawDt * 1000);
 
  // Başlangıç mod seçim penceresi açıkken ve garajda değilken:

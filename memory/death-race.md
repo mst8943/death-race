@@ -410,3 +410,9 @@
 ## [Fix] Boya & Rakip Renkleri + Gemini Modelleme Komutu
 - Garaj boyası ve rakip renkleri hiç uygulanmıyordu: kod mesh adı `chassis`/`part_*` arıyordu ama GLTFLoader çok-malzemeli nesneleri `Cube_1` gibi alt mesh'lere bölüyor. Artık `paintCarBody()` malzeme adına göre boyar: `T_Govde` ana boya, `GovdeKoyu` koyu ton (x0.45). Rakipler yalnızca boya malzemelerini kopyalar (oyuncu boyası rakiplere bulaşmaz).
 - `blender/GEMINI_PROMPT.md`: ana araç v2 için Gemini'ye verilecek komut (eksenler, zarf, tekerlek konumları, montaj noktaları, 6 nesne adı, boya malzeme adları, bütçe ≤12k/≤1.2k üçgen, ≤12 malzeme, render + doğrulama). Model gelince: `models/`'e kopyala → `python tools/pack_models.py` → oyun içi test.
+
+## [Model] Araç v2 (Gemini) + Garaj Konumu Düzeltmesi
+- `blender/car_v2.py` (Gemini, Blender 5.2) → `blender/cikti_v2/` → `models/car_body.glb`, `models/wheel.glb` → `python tools/pack_models.py car_body wheel` → `js/models/*.js`. Sözleşme kontrolü: 6 nesne adı, 12 malzeme (opak, dokusuz), T_Govde chassis'te, 5.968 üçgen, zarf içinde. Tekerlek 0.416 yarıçaplı geldi → yüklemede `wheelOptions.radius / modelRadius` ile otomatik ölçekleniyor.
+- **Garaj hatası (orijinalden):** showroom y = -350'deydi; ana zemin sonsuz `CANNON.Plane` olduğu için araç gökyüzüne fırlıyordu, garaj sahnesi hiç görünmüyordu. Garaj artık `GARAGE_POS` (-3200, 0, -3200), ayrı zemin gövdesi kaldırıldı.
+- Menüden garaja girince mod menüsü kapanır, çıkınca menüye dönülür (`garageFromMenu`); yarış başlamadan rakipler ve tur sayacı bekler.
+- Geri sayım gerçek zamanla (`realDt`) ilerler (30 FPS altında uzuyordu).
