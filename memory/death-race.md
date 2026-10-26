@@ -332,3 +332,17 @@
 
 
 
+
+## [Fix] Stutter Kök Neden Analizi II: Işık Havuzu, Tek-Context PiP, Shader Warmup, Havuzlama
+- Ölçüm (headless Chromium + PerformanceObserver longtask + renderer.info.programs):
+  - Önce: sahnede 104 PointLight + 19 SpotLight, 930 fizik gövdesi; açılışta 4.6 sn'lik ilk-render (shader derleme) görevi; ilk Takedown'da ikinci WebGLRenderer yüzünden tüm sahne yeniden yüklenip derleniyordu; program sayısı oyun içinde 11 → 21 (çalışma zamanında yeniden derleme).
+  - Sonra: 11 Point + 7 Spot sabit ışık, 210 gövde, Takedown senkron süresi 25.6 sn → 24 ms (swiftshader), program sayısı oyun boyunca sabit 12.
+- Değişiklikler:
+  1. **Işık Havuzu:** Dekoratif ışıklar `poolLight()` ile sanal (visible=false); kameraya en yakın 8 point / 5 spot her karede sabit slotlara kopyalanır. Runtime ışıkları (mayın LED, airdrop flare, tavan çakarı) artık shader yeniden derlemesi tetiklemez.
+  2. **PiP:** İkinci WebGLRenderer kaldırıldı; ana renderer `setScissor/setViewport` ile `#pip-canvas` dikdörtgenine çizer (gölge haritası ikinci geçişte güncellenmez).
+  3. **Shader Warmup:** Görünmez `shaderWarmupGroup` + `renderer.compileAsync`; derleme bitene kadar çizim yapılmaz, menü arka planı 30 FPS.
+  4. **Ses:** `masterGain` kendine bağlanıyordu (hiç ses çıkmıyordu) → `ctx.destination`. Gürültü buffer'ları `Snd.noiseBuffer` ile önbellekleniyor, `Snd.gate` ile atış/çarpışma sesleri hız sınırlı. `playCannonShot` içindeki tanımsız `vol` ReferenceError'ı giderildi.
+  5. **speechSynthesis:** Ses listesi önbellekli, konuşma `requestIdleCallback` ile ertelenir ve aynı karedeki satırlar birleşir.
+  6. **Havuzlama:** Mermi, duman, drift dumanı (`createMeshPool`), patlama (8'lik materyal havuzu), kıvılcım (typed-array halka tamponu). Mermi/roket raycast'leri scratch nesne kullanır.
+  7. **Fizik:** 800 bariyer gövdesi → 80 bileşik gövde (10 segment/gövde, ortak `CANNON.Box`).
+  8. **DOM:** buff kutusu, ısı barı, pit HUD, tur süresi, eleme sayacı ve rakip HP barları dirty-check ile yazılır; eleme sayacının kopuk DOM referansı düzeltildi. `#cv` CSS boyutu (DPR>1 taşması) düzeltildi.

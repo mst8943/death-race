@@ -16,7 +16,7 @@ const bannerEl = document.getElementById('banner');
 const buffBoxEl = document.getElementById('buff-box');
 const radioBoxEl = document.getElementById('radio-box');
 const radioTextEl = document.getElementById('radio-text');
-const eliminationTimerEl = document.getElementById('elimination-timer');
+let eliminationTimerEl = document.getElementById('elimination-timer');
 
 // Reyting & Liderlik Tablosu DOM Elementleri
 const viewersValEl = document.getElementById('viewers-val');
@@ -72,6 +72,32 @@ const Snd = {
   isMusicPlaying: false
  },
 
+ // Gürültü buffer önbelleği: her atış/patlamada binlerce örneklik AudioBuffer üretmek yerine
+ // anahtar başına birkaç varyant bir kez üretilir ve yeniden kullanılır (sıfır GC, sıfır CPU spike).
+ _noiseCache: {},
+ noiseBuffer(key, dur, fn) {
+  let variants = this._noiseCache[key];
+  if (!variants) variants = this._noiseCache[key] = [];
+  if (variants.length < 3) {
+   const n = Math.floor(this.ctx.sampleRate * dur);
+   const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+   const d = buf.getChannelData(0);
+   for (let i = 0; i < n; i++) d[i] = fn(i, n);
+   variants.push(buf);
+   return buf;
+  }
+  return variants[(Math.random() * variants.length) | 0];
+ },
+
+ // Aynı efektin aynı anda onlarca kez çalınmasını engeller (4 AI + oyuncu minigun'ı saniyede ~50 atış).
+ _lastPlay: {},
+ gate(key, minIntervalMs) {
+  const t = performance.now();
+  if (t - (this._lastPlay[key] || 0) < minIntervalMs) return false;
+  this._lastPlay[key] = t;
+  return true;
+ },
+
  get destSFX() { return this.sfxGain || this.masterGain || (this.ctx ? this.ctx.destination : null); },
  get destMusic() { return this.musicGain || this.masterGain || (this.ctx ? this.ctx.destination : null); },
  get destVoice() { return this.voiceGain || this.masterGain || (this.ctx ? this.ctx.destination : null); },
@@ -93,7 +119,9 @@ const Snd = {
  setupGainNodes() {
   if (!this.ctx || this.masterGain) return;
   this.masterGain = this.ctx.createGain();
-  this.masterGain.connect(this.destSFX);
+  // Not: önceden this.destSFX'e bağlanıyordu; o anda sfxGain null olduğu için masterGain kendine
+  // bağlanıp (gecikmesiz döngü = sessizlik) hiçbir ses hoparlöre ulaşmıyordu.
+  this.masterGain.connect(this.ctx.destination);
 
   this.sfxGain = this.ctx.createGain();
   this.sfxGain.connect(this.masterGain);
@@ -311,10 +339,7 @@ const Snd = {
 
    // Snare
    if (step === 4 || step === 12) {
-    const bufLen = Math.floor(this.ctx.sampleRate * 0.1);
-    const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.25));
+    const buf = this.noiseBuffer('0.1|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.25))', 0.1, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.25)));
     const noise = this.ctx.createBufferSource();
     noise.buffer = buf;
     const bpf = this.ctx.createBiquadFilter();
@@ -352,10 +377,7 @@ const Snd = {
   this.init();
   if (!this.ctx) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 1.5);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.4));
+  const buf = this.noiseBuffer('1.5|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.4))', 1.5, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.4)));
   const noise = this.ctx.createBufferSource();
   noise.buffer = buf;
   const lpf = this.ctx.createBiquadFilter();
@@ -370,11 +392,9 @@ const Snd = {
  playGunshot(isEnemy = false) {
   this.init();
   if (!this.ctx) return;
+  if (!this.gate(isEnemy ? 'gunE' : 'gunP', isEnemy ? 45 : 30)) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.08);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.3));
+  const buf = this.noiseBuffer('0.08|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.3))', 0.08, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.3)));
   const noise = this.ctx.createBufferSource();
   noise.buffer = buf;
 
@@ -405,10 +425,7 @@ const Snd = {
   this.init();
   if (!this.ctx) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.45);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1);
+  const buf = this.noiseBuffer('0.45|(Math.random() * 2 - 1)', 0.45, (i, n) => (Math.random() * 2 - 1));
   const src = this.ctx.createBufferSource(); src.buffer = buf;
   const bpf = this.ctx.createBiquadFilter();
   bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(400, now);
@@ -428,7 +445,7 @@ const Snd = {
   osc.type = 'sine';
   osc.frequency.setValueAtTime(180, now);
   osc.frequency.exponentialRampToValueAtTime(25, now + 0.4);
-  g.gain.setValueAtTime(0.9 * vol, now);
+  g.gain.setValueAtTime(0.9, now);
   g.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
   osc.connect(g).connect(this.destSFX);
   osc.start(now); osc.stop(now + 0.45);
@@ -451,10 +468,7 @@ const Snd = {
   this.init();
   if (!this.ctx) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.2);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1);
+  const buf = this.noiseBuffer('0.2|(Math.random() * 2 - 1)', 0.2, (i, n) => (Math.random() * 2 - 1));
   const src = this.ctx.createBufferSource(); src.buffer = buf;
   const bpf = this.ctx.createBiquadFilter();
   bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(1800 + Math.random() * 400, now);
@@ -482,6 +496,7 @@ const Snd = {
  playImpact() {
   this.init();
   if (!this.ctx) return;
+  if (!this.gate('impact', 35)) return;
   const now = this.ctx.currentTime;
   const osc = this.ctx.createOscillator();
   const g = this.ctx.createGain();
@@ -496,11 +511,9 @@ const Snd = {
  playExplosion() {
   this.init();
   if (!this.ctx) return;
+  if (!this.gate('explosion', 70)) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.9);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.35));
+  const buf = this.noiseBuffer('0.9|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.35))', 0.9, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.35)));
   const noise = this.ctx.createBufferSource(); noise.buffer = buf;
   const lpf = this.ctx.createBiquadFilter();
   lpf.type = 'lowpass'; lpf.frequency.setValueAtTime(700, now);
@@ -523,6 +536,7 @@ const Snd = {
  playMetalSnap() {
   this.init();
   if (!this.ctx) return;
+  if (!this.gate('snap', 45)) return;
   const now = this.ctx.currentTime;
   const osc = this.ctx.createOscillator();
   const g = this.ctx.createGain();
@@ -551,11 +565,9 @@ const Snd = {
  playCrash(intensity = 0.5) {
   this.init();
   if (!this.ctx) return;
+  if (!this.gate('crash', 50)) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.35);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.25));
+  const buf = this.noiseBuffer('0.35|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.25))', 0.35, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.25)));
   const noise = this.ctx.createBufferSource(); noise.buffer = buf;
   const bpf = this.ctx.createBiquadFilter();
   bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(800, now);
@@ -570,10 +582,7 @@ const Snd = {
   this.init();
   if (!this.ctx) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 1.2);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1);
+  const buf = this.noiseBuffer('1.2|(Math.random() * 2 - 1)', 1.2, (i, n) => (Math.random() * 2 - 1));
   const src = this.ctx.createBufferSource(); src.buffer = buf;
   const bpf = this.ctx.createBiquadFilter();
   bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(1100, now);
@@ -589,10 +598,7 @@ const Snd = {
    this.init();
    if (!this.ctx) return;
    const now = this.ctx.currentTime;
-   const bufLen = Math.floor(this.ctx.sampleRate * 0.14);
-   const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-   const d = buf.getChannelData(0);
-   for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * 0.35;
+   const buf = this.noiseBuffer('0.14|(Math.random() * 2 - 1) * 0.35', 0.14, (i, n) => (Math.random() * 2 - 1) * 0.35);
    const src = this.ctx.createBufferSource(); src.buffer = buf;
    const bpf = this.ctx.createBiquadFilter();
    bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(1750, now);
@@ -617,10 +623,7 @@ const Snd = {
    osc.connect(g).connect(this.destSFX);
    osc.start(now); osc.stop(now + 0.5);
 
-   const bLen = Math.floor(this.ctx.sampleRate * 0.35);
-   const buf = this.ctx.createBuffer(1, bLen, this.ctx.sampleRate);
-   const d = buf.getChannelData(0);
-   for (let i = 0; i < bLen; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(i * 0.1);
+   const buf = this.noiseBuffer('0.35|(Math.random() * 2 - 1) * Math.sin(i * 0.1)', 0.35, (i, n) => (Math.random() * 2 - 1) * Math.sin(i * 0.1));
    const src = this.ctx.createBufferSource(); src.buffer = buf;
    const bpf = this.ctx.createBiquadFilter();
    bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(3200, now);
@@ -647,10 +650,7 @@ const Snd = {
    this.init();
    if (!this.ctx) return;
    const now = this.ctx.currentTime;
-   const bLen = Math.floor(this.ctx.sampleRate * 0.4);
-   const buf = this.ctx.createBuffer(1, bLen, this.ctx.sampleRate);
-   const d = buf.getChannelData(0);
-   for (let i = 0; i < bLen; i++) d[i] = (Math.random() * 2 - 1);
+   const buf = this.noiseBuffer('0.4|(Math.random() * 2 - 1)', 0.4, (i, n) => (Math.random() * 2 - 1));
    const src = this.ctx.createBufferSource(); src.buffer = buf;
    const lpf = this.ctx.createBiquadFilter();
    lpf.type = 'lowpass'; lpf.frequency.setValueAtTime(1400, now);
@@ -761,10 +761,7 @@ const Snd = {
   this.init();
   if (!this.ctx) return;
   const now = this.ctx.currentTime;
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.8);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1);
+  const buf = this.noiseBuffer('0.8|(Math.random() * 2 - 1)', 0.8, (i, n) => (Math.random() * 2 - 1));
   const src = this.ctx.createBufferSource(); src.buffer = buf;
   const bpf = this.ctx.createBiquadFilter();
   bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(650, now);
@@ -820,10 +817,7 @@ const Snd = {
   osc.connect(g).connect(this.destSFX);
   osc.start(now); osc.stop(now + 0.5);
 
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.5);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.2));
+  const buf = this.noiseBuffer('0.5|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.2))', 0.5, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.2)));
   const noise = this.ctx.createBufferSource(); noise.buffer = buf;
   const bpf = this.ctx.createBiquadFilter();
   bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(850, now);
@@ -836,6 +830,7 @@ const Snd = {
  playHeavyGunshot() {
   this.init();
   if (!this.ctx) return;
+  if (!this.gate('gunH', 30)) return;
   const now = this.ctx.currentTime;
   const osc = this.ctx.createOscillator();
   const og = this.ctx.createGain();
@@ -847,10 +842,7 @@ const Snd = {
   osc.connect(og).connect(this.destSFX);
   osc.start(now); osc.stop(now + 0.12);
 
-  const bufLen = Math.floor(this.ctx.sampleRate * 0.1);
-  const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.25));
+  const buf = this.noiseBuffer('0.1|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.25))', 0.1, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.25)));
   const noise = this.ctx.createBufferSource(); noise.buffer = buf;
   const bpf = this.ctx.createBiquadFilter();
   bpf.type = 'bandpass'; bpf.frequency.setValueAtTime(2100, now);
@@ -909,10 +901,7 @@ const Snd = {
    this.init();
    if (!this.ctx) return;
    const now = this.ctx.currentTime;
-   const bufLen = Math.floor(this.ctx.sampleRate * 0.35);
-   const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-   const d = buf.getChannelData(0);
-   for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufLen * 0.4));
+   const buf = this.noiseBuffer('0.35|(Math.random() * 2 - 1) * Math.exp(-i / (n * 0.4))', 0.35, (i, n) => (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.4)));
    const src = this.ctx.createBufferSource();
    src.buffer = buf;
    const bpf = this.ctx.createBiquadFilter();
@@ -999,10 +988,7 @@ const Snd = {
  updateCrowd(vol, speed) {
   if (!this.ctx) return;
   if (!this.crowdSource) {
-   const bufLen = Math.floor(this.ctx.sampleRate * 2.0);
-   const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-   const d = buf.getChannelData(0);
-   for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * 0.4;
+   const buf = this.noiseBuffer('2.0|(Math.random() * 2 - 1) * 0.4', 2.0, (i, n) => (Math.random() * 2 - 1) * 0.4);
    this.crowdSource = this.ctx.createBufferSource();
    this.crowdSource.buffer = buf;
    this.crowdSource.loop = true;
@@ -1462,11 +1448,15 @@ const barrierMat = new T.MeshStandardMaterial({ color: '#5a606a', roughness: 0.8
 const destructiblePoles = [];
 const poleBulbMat = new T.MeshBasicMaterial({ color: '#fff2d4' });
 const poleBulbGeo = new T.SphereGeometry(0.35, 8, 6);
+const poleGeo = new T.CylinderGeometry(0.25, 0.3, 11, 8);
 
 function createBarrierWall() {
  const BARRIER_STEPS = 400;
  const totalBarriers = BARRIER_STEPS * 2;
  const instancedBarriers = new T.InstancedMesh(barrierGeo, barrierMat, totalBarriers);
+ const BARRIER_CHUNK = 10;
+ const barrierShape = new CANNON.Box(new CANNON.Vec3(0.6, 0.65, 8.75)); // tüm segmentler aynı şekli paylaşır
+ const chunkBodies = [null, null];
  instancedBarriers.castShadow = true;
  instancedBarriers.receiveShadow = true;
  const dummy = new T.Object3D();
@@ -1481,12 +1471,19 @@ function createBarrierWall() {
 
   for (let side of [-1, 1]) {
    const bPos = pt.clone().addScaledVector(binormal, side * (TRACK_WIDTH / 2 + 0.65));
-   const bBody = new CANNON.Body({ mass: 0, material: groundMat });
-   bBody.addShape(new CANNON.Box(new CANNON.Vec3(0.6, 0.65, 8.75)));
-   bBody.position.set(bPos.x, 0.65, bPos.z);
-   bBody.quaternion.setFromEuler(0, angle, 0);
-   bBody.sleep();
-   world.addBody(bBody);
+   // 800 ayrı statik gövde yerine her 10 segment tek bir bileşik (compound) gövdede toplanır:
+   // broadphase/raycast'in taradığı gövde sayısı 800'den 80'e iner, çarpışma geometrisi birebir aynı kalır.
+   const sideKey = side < 0 ? 0 : 1;
+   if (i % BARRIER_CHUNK === 0) {
+    const chunk = new CANNON.Body({ mass: 0, material: groundMat });
+    chunk.position.set(bPos.x, 0.65, bPos.z);
+    world.addBody(chunk);
+    chunkBodies[sideKey] = chunk;
+   }
+   const cb = chunkBodies[sideKey];
+   const shapeQuat = new CANNON.Quaternion();
+   shapeQuat.setFromEuler(0, angle, 0);
+   cb.addShape(barrierShape, new CANNON.Vec3(bPos.x - cb.position.x, 0, bPos.z - cb.position.z), shapeQuat);
 
    dummy.position.set(bPos.x, 0.65, bPos.z);
    dummy.rotation.set(0, angle, 0);
@@ -1496,7 +1493,7 @@ function createBarrierWall() {
 
   if (i % 10 === 0) {
    const polePos = pt.clone().addScaledVector(binormal, (TRACK_WIDTH / 2 + 5.5));
-   const poleMesh = new T.Mesh(new T.CylinderGeometry(0.25, 0.3, 11, 8), barrierMat);
+   const poleMesh = new T.Mesh(poleGeo, barrierMat);
    poleMesh.position.set(polePos.x, 5.0, polePos.z);
    poleMesh.castShadow = true;
    scene.add(poleMesh);
@@ -2271,27 +2268,52 @@ function showBanner(text, cssClass = '') {
  bannerTimer = 2.4;
 }
 
+// speechSynthesis.getVoices()/cancel()/speak() bazı platformlarda (özellikle Windows'ta ilk çağrıda)
+// ana thread'i yüzlerce ms bloklayabilir. Ses listesi bir kez önbelleklenir, konuşma çağrısı
+// mevcut görevden (tıklama / çarpışma karesi) ayrılıp ertelenir ve art arda gelen satırlar birleştirilir.
+let cachedVoices = null;
+let pendingSpeech = null;
+let speechTimer = 0;
+function getCachedVoices() {
+ if (!cachedVoices || cachedVoices.length === 0) cachedVoices = window.speechSynthesis.getVoices() || [];
+ return cachedVoices;
+}
+if ('speechSynthesis' in window) {
+ window.speechSynthesis.addEventListener?.('voiceschanged', () => { cachedVoices = null; });
+}
+
 function speakVoice(text, speaker = 'case') {
  if (!('speechSynthesis' in window)) return;
- try {
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices() || [];
-  if (speaker === 'hennessey') {
-   utter.pitch = 0.82;
-   utter.rate = 1.05;
-   utter.volume = 1.0;
-   const v = voices.find(vo => vo.lang.includes('tr') || vo.lang.includes('en'));
-   if (v) utter.voice = v;
-  } else {
-   utter.pitch = 1.1;
-   utter.rate = 1.15;
-   utter.volume = 0.95;
-   const v = voices.find(vo => vo.lang.includes('tr') || (vo.name.includes('Female') || vo.name.includes('Zira') || vo.lang.includes('en')));
-   if (v) utter.voice = v;
-  }
-  window.speechSynthesis.speak(utter);
- } catch (e) {}
+ // Sadece en son istenen satır okunur; aynı karede gelen 2-3 telsiz mesajı tek bir konuşmaya iner.
+ pendingSpeech = { text, speaker };
+ if (speechTimer) return;
+ const run = () => {
+  speechTimer = 0;
+  const job = pendingSpeech;
+  pendingSpeech = null;
+  if (!job) return;
+  try {
+   const synth = window.speechSynthesis;
+   if (synth.speaking || synth.pending) synth.cancel();
+   const utter = new SpeechSynthesisUtterance(job.text);
+   const voices = getCachedVoices();
+   if (job.speaker === 'hennessey') {
+    utter.pitch = 0.82;
+    utter.rate = 1.05;
+    utter.volume = 1.0;
+    const v = voices.find(vo => vo.lang.includes('tr') || vo.lang.includes('en'));
+    if (v) utter.voice = v;
+   } else {
+    utter.pitch = 1.1;
+    utter.rate = 1.15;
+    utter.volume = 0.95;
+    const v = voices.find(vo => vo.lang.includes('tr') || (vo.name.includes('Female') || vo.name.includes('Zira') || vo.lang.includes('en')));
+    if (v) utter.voice = v;
+   }
+   synth.speak(utter);
+  } catch (e) {}
+ };
+ speechTimer = window.requestIdleCallback ? requestIdleCallback(run, { timeout: 300 }) : setTimeout(run, 60);
 }
 
 const radioSpeakerLabelEl = document.getElementById('radio-speaker-label');
@@ -2684,6 +2706,9 @@ function getRoofGroup() {
 }
 
 let strobeRed = null, strobeBlue = null;
+// Her karede '#ff2200' gibi string renk ayrıştırmamak için önceden oluşturulmuş renkler
+const STROBE_RED_ON = new T.Color('#ff2200'), STROBE_RED_OFF = new T.Color('#440000');
+const STROBE_BLUE_ON = new T.Color('#0088ff'), STROBE_BLUE_OFF = new T.Color('#001144');
 let strobeLightR = null, strobeLightB = null;
 
 function applyRoofKit(kitId) {
@@ -2707,10 +2732,12 @@ function applyRoofKit(kitId) {
 
   strobeLightR = new T.PointLight('#ff1100', 0, 12);
   strobeLightR.position.set(-0.25, 1.3, -0.4);
+  poolLight(strobeLightR);
   rg.add(strobeLightR);
 
   strobeLightB = new T.PointLight('#0066ff', 0, 12);
   strobeLightB.position.set(0.25, 1.3, -0.4);
+  poolLight(strobeLightB);
   rg.add(strobeLightB);
  } else if (kitId === 'safari') {
   const bar = new T.Mesh(new T.BoxGeometry(1.4, 0.08, 0.08), bumperSteelMat);
@@ -3421,6 +3448,8 @@ function setGameMode(mode, closeModal = false) {
   }
   if (elimHud) {
    elimHud.innerHTML = '☠ ELEME SAYACI: <span id="elimination-timer">' + Math.max(0, eliminationTimer).toFixed(1) + 's</span> (SONUNCU İMHA EDİLİR!)';
+   // innerHTML eski <span>'ı DOM'dan kopardı; referans yenilenmezse sayaç ekranda hiç güncellenmez
+   eliminationTimerEl = document.getElementById('elimination-timer');
    elimHud.style.borderColor = 'rgba(231,76,60,0.6)';
    elimHud.style.color = '#fff';
   }
@@ -3594,44 +3623,125 @@ const rocketGeo = new T.CylinderGeometry(0.06, 0.06, 0.85, 8);
 rocketGeo.rotateX(Math.PI / 2);
 const rocketMat = new T.MeshStandardMaterial({ color: '#2c3e50', roughness: 0.4, metalness: 0.8 });
 
-const sparks = [];
-const sparkGeo = new T.BufferGeometry();
+/* ---------- Nesne havuzları (Object Pooling) ----------
+   Mermi/duman/patlama mesh'leri her atışta new T.Mesh + scene.add/remove yapmak yerine bir kez
+   oluşturulup görünürlükleri açılıp kapatılır: GC baskısı ve scene.children splice maliyeti sıfırlanır,
+   ayrıca havuzdaki örnekler sahnede durduğu için shader'ları açılışta önceden derlenir. */
+function createMeshPool(geo, defaultMat, prewarm = 0) {
+ const free = [];
+ const make = () => {
+  const m = new T.Mesh(geo, defaultMat);
+  m.visible = false;
+  scene.add(m);
+  return m;
+ };
+ for (let i = 0; i < prewarm; i++) free.push(make());
+ return {
+  acquire(mat) {
+   const m = free.pop() || make();
+   m.material = mat || defaultMat;
+   m.position.set(0, 0, 0);
+   m.quaternion.identity();
+   m.scale.set(1, 1, 1);
+   m.visible = true;
+   return m;
+  },
+  release(m) {
+   if (!m.visible) return;
+   m.visible = false;
+   free.push(m);
+  }
+ };
+}
+
+const bulletPool = createMeshPool(bulletGeo, bulletMatPlayer, 64);
+function acquireBulletMesh(mat) { return bulletPool.acquire(mat); }
+function releaseBulletMesh(m) { bulletPool.release(m); }
+
+// Kıvılcımlar: nesne başına {x,y,z...} objesi + sparks.shift() (O(n)) yerine sabit boyutlu
+// typed-array halka tamponu. Tek draw call, sıfır tahsis.
 const sparkMax = 350;
+const sparkGeo = new T.BufferGeometry();
 const sparkPos = new Float32Array(sparkMax * 3);
+const sparkVel = new Float32Array(sparkMax * 3);
+const sparkLife = new Float32Array(sparkMax);
+for (let i = 0; i < sparkMax; i++) sparkPos[i * 3 + 1] = -999;
+let sparkHead = 0;
+let sparksAlive = 0;
 sparkGeo.setAttribute('position', new T.BufferAttribute(sparkPos, 3));
 const sparkMat = new T.PointsMaterial({ color: '#ffcc44', size: 0.18, transparent: true, opacity: 0.95 });
-scene.add(new T.Points(sparkGeo, sparkMat));
+const sparkPoints = new T.Points(sparkGeo, sparkMat);
+sparkPoints.frustumCulled = false; // bounding sphere ilk karedeki (boş) konumlardan hesaplanıp kıvılcımları yanlışlıkla kırpıyordu
+scene.add(sparkPoints);
 
 function spawnSparks(pos, normal, count = 10) {
  for (let i = 0; i < count; i++) {
-  if (sparks.length >= sparkMax) sparks.shift();
-  const dir = new T.Vector3(
-   normal.x + (Math.random() - 0.5) * 1.2,
-   normal.y + Math.random() * 1.5 + 0.3,
-   normal.z + (Math.random() - 0.5) * 1.2
-  ).normalize().multiplyScalar(4 + Math.random() * 8);
+  const idx = sparkHead;
+  sparkHead = (sparkHead + 1) % sparkMax;
+  if (sparkLife[idx] <= 0) sparksAlive++;
 
-  sparks.push({
-   x: pos.x, y: pos.y, z: pos.z,
-   vx: dir.x, vy: dir.y, vz: dir.z,
-   life: 0.3 + Math.random() * 0.25,
-  });
+  const dx = normal.x + (Math.random() - 0.5) * 1.2;
+  const dy = normal.y + Math.random() * 1.5 + 0.3;
+  const dz = normal.z + (Math.random() - 0.5) * 1.2;
+  const sp = (4 + Math.random() * 8) / (Math.sqrt(dx * dx + dy * dy + dz * dz) || 1);
+
+  const o = idx * 3;
+  sparkPos[o] = pos.x; sparkPos[o + 1] = pos.y; sparkPos[o + 2] = pos.z;
+  sparkVel[o] = dx * sp; sparkVel[o + 1] = dy * sp; sparkVel[o + 2] = dz * sp;
+  sparkLife[idx] = 0.3 + Math.random() * 0.25;
  }
 }
 
+function updateSparks(dt) {
+ if (sparksAlive === 0) return;
+ for (let i = 0; i < sparkMax; i++) {
+  if (sparkLife[i] <= 0) continue;
+  const o = i * 3;
+  sparkLife[i] -= dt;
+  if (sparkLife[i] <= 0) {
+   sparkPos[o + 1] = -999;
+   sparksAlive--;
+   continue;
+  }
+  sparkVel[o + 1] -= 9.8 * dt;
+  sparkPos[o] += sparkVel[o] * dt;
+  sparkPos[o + 1] += sparkVel[o + 1] * dt;
+  sparkPos[o + 2] += sparkVel[o + 2] * dt;
+  if (sparkPos[o + 1] < 0.05) { sparkPos[o + 1] = 0.05; sparkVel[o + 1] = -sparkVel[o + 1] * 0.4; }
+ }
+ sparkGeo.attributes.position.needsUpdate = true;
+}
+
+// Patlamalar: her patlamada expMat.clone() + dispose() yerine kendi materyaline sahip sabit bir havuz.
+// (dispose edilen son materyal shader programını da silebiliyor ve bir sonraki patlama yeniden derletiyordu.)
 const explosions = [];
 const expSphereGeo = new T.SphereGeometry(1, 12, 10);
 const expMat = new T.MeshBasicMaterial({ color: '#ff5511', transparent: true, opacity: 0.9 });
+const explosionFree = [];
+for (let i = 0; i < 8; i++) {
+ const m = new T.Mesh(expSphereGeo, expMat.clone());
+ m.visible = false;
+ scene.add(m);
+ explosionFree.push(m);
+}
+const _explosionUp = new T.Vector3(0, 1, 0);
 
 function createExplosion(pos, maxRadius = 8, shockImpulse = 2400) {
  Snd.playExplosion();
  cameraShake = Math.max(cameraShake, 0.55);
 
- const expMesh = new T.Mesh(expSphereGeo, expMat.clone());
+ let expMesh = explosionFree.pop();
+ if (!expMesh) {
+  // Havuz boşsa en eski patlamayı yeniden kullan
+  const oldest = explosions.shift();
+  expMesh = oldest.mesh;
+ }
  expMesh.position.set(pos.x, pos.y, pos.z);
- scene.add(expMesh);
+ expMesh.scale.setScalar(0.5);
+ expMesh.material.opacity = 0.9;
+ expMesh.visible = true;
  explosions.push({ mesh: expMesh, curScale: 0.5, maxScale: maxRadius, life: 0.5, maxLife: 0.5 });
- spawnSparks(pos, new T.Vector3(0, 1, 0), 40);
+ spawnSparks(pos, _explosionUp, 40);
 
  for (let b of world.bodies) {
   if (b.mass <= 0) continue;
@@ -3656,13 +3766,14 @@ const smokeMat = new T.MeshBasicMaterial({ color: '#2a2c30', transparent: true, 
 const tireSmokeMat = new T.MeshBasicMaterial({ color: '#eef0f4', transparent: true, opacity: 0.38, depthWrite: false });
 const damageSmokeFireMat = new T.MeshBasicMaterial({ color: '#ff5500', transparent: true, opacity: 0.8, depthWrite: false });
 const damageSmokeDarkMat = new T.MeshBasicMaterial({ color: '#222222', transparent: true, opacity: 0.55, depthWrite: false });
+const smokePool = createMeshPool(smokeGeo, tireSmokeMat, 48);
+const _smokeOffset = new T.Vector3();
 
 function spawnTireSmoke(pos) {
  if (smokePuffs.length > 40) return;
- const m = new T.Mesh(smokeGeo, tireSmokeMat);
+ const m = smokePool.acquire(tireSmokeMat);
  m.position.set(pos.x + (Math.random() - 0.5) * 0.3, pos.y, pos.z + (Math.random() - 0.5) * 0.3);
  m.scale.setScalar(0.35 + Math.random() * 0.2);
- scene.add(m);
  smokePuffs.push({
   mesh: m, vx: (Math.random() - 0.5) * 1.5, vy: 1.2 + Math.random() * 1.2, vz: (Math.random() - 0.5) * 1.5,
   grow: 3.5, life: 0.8, maxLife: 0.8
@@ -3673,10 +3784,9 @@ function dropSmokeScreen() {
  Snd.playHiss();
  const rearPos = new T.Vector3(0, 0.3, -2.2).applyQuaternion(carGroup.quaternion).add(carGroup.position);
  for (let i = 0; i < 7; i++) {
-  const m = new T.Mesh(smokeGeo, smokeMat);
+  const m = smokePool.acquire(smokeMat);
   m.position.set(rearPos.x + (Math.random() - 0.5) * 1.5, rearPos.y + Math.random() * 0.5, rearPos.z + (Math.random() - 0.5) * 1.5);
   m.scale.setScalar(1.2 + Math.random() * 0.8);
-  scene.add(m);
   smokePuffs.push({
    mesh: m, vx: (Math.random() - 0.5) * 2.5, vy: 1.0 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 2.5,
    grow: 4.5, life: 4.0, maxLife: 4.0
@@ -3686,12 +3796,11 @@ function dropSmokeScreen() {
 
 function spawnDamageSmokePuff(isFire = false) {
  if (smokePuffs.length > 40) return;
- const hoodPos = new T.Vector3(0, 0.5, 0.9).applyQuaternion(carGroup.quaternion).add(carGroup.position);
+ const hoodPos = _smokeOffset.set(0, 0.5, 0.9).applyQuaternion(carGroup.quaternion).add(carGroup.position);
  const mat = isFire ? damageSmokeFireMat : damageSmokeDarkMat;
- const m = new T.Mesh(smokeGeo, mat);
+ const m = smokePool.acquire(mat);
  m.position.set(hoodPos.x + (Math.random() - 0.5) * 0.4, hoodPos.y, hoodPos.z + (Math.random() - 0.5) * 0.4);
  m.scale.setScalar(0.4 + Math.random() * 0.3);
- scene.add(m);
  smokePuffs.push({
   mesh: m, vx: (Math.random() - 0.5) * 1.2, vy: 2.2 + Math.random() * 1.8, vz: (Math.random() - 0.5) * 1.2,
   grow: isFire ? 2.5 : 3.8, life: isFire ? 0.7 : 1.8, maxLife: isFire ? 0.7 : 1.8
@@ -4047,10 +4156,9 @@ function updateDreadnought(dt) {
    const muzzlePos = new T.Vector3(0, 3.2, 3.0).applyQuaternion(dreadnoughtMeshObj.root.quaternion).add(dreadnoughtMeshObj.root.position);
    const aimDir = new T.Vector3(toPlayer.x, toPlayer.y + 0.5, toPlayer.z).normalize();
 
-   const cannonBall = new T.Mesh(bulletGeo, bulletMatCannon);
+   const cannonBall = acquireBulletMesh(bulletMatCannon);
    cannonBall.scale.set(3, 3, 3);
    cannonBall.position.copy(muzzlePos);
-   scene.add(cannonBall);
 
    activeBullets.push({
     mesh: cannonBall, pos: muzzlePos.clone(), vel: aimDir.multiplyScalar(140),
@@ -4176,22 +4284,13 @@ let takedownPipActive = false;
 let takedownPipTimer = 0;
 let lastRivalTauntTime = 0;
 
-let pipRenderer = null;
+// PiP artık ikinci bir WebGLRenderer (= ikinci WebGL context) kullanmıyor. Ayrı context, ilk takedown
+// anında sahnedeki TÜM geometri/doku/shader'ları o context için yeniden yükleyip derliyordu (saniyelerce donma).
+// Bunun yerine ana renderer, #pip-canvas'ın ekrandaki dikdörtgenine scissor/viewport ile ikinci bir geçiş çizer.
 const pipCamera = new T.PerspectiveCamera(46, 280 / 158, 0.5, 450);
-
-function initPipRenderer() {
- if (!pipRenderer) {
-  const pipCanvasEl = document.getElementById('pip-canvas');
-  if (pipCanvasEl) {
-   try {
-    pipRenderer = new T.WebGLRenderer({ canvas: pipCanvasEl, antialias: false, powerPreference: 'low-power' });
-    pipRenderer.setSize(280, 158, false);
-   } catch (e) {
-    console.warn('PiP renderer init hatası:', e);
-   }
-  }
- }
-}
+const pipCanvasEl = document.getElementById('pip-canvas');
+let pipRect = null; // CSS piksel cinsinden; ilk PiP karesinde bir kez okunur, resize'da sıfırlanır
+addEventListener('resize', () => { pipRect = null; });
 
 function triggerRivalTaunt(ai, eventType = 'attack') {
  const now = performance.now();
@@ -4232,7 +4331,6 @@ function triggerTakedown(victimAI) {
  takedownVictimAI = victimAI;
  takedownPipActive = true;
  takedownPipTimer = 2.6; // 2.6 saniye boyunca köşe PiP ekranda canlı yayın olarak gösterilir
- initPipRenderer();
 
  const pipContainer = document.getElementById('takedown-pip-container');
  const pipTitle = document.getElementById('pip-victim-title');
@@ -4347,9 +4445,8 @@ function shootAIBullet(ai) {
  fwd.x += (Math.random() - 0.5) * 0.05; fwd.y += (Math.random() - 0.5) * 0.03; fwd.z += (Math.random() - 0.5) * 0.05;
  fwd.normalize();
 
- const bMesh = new T.Mesh(bulletGeo, bulletMatEnemy);
+ const bMesh = acquireBulletMesh(bulletMatEnemy);
  bMesh.position.copy(muzzlePos); bMesh.quaternion.copy(ai.meshGroup.quaternion);
- scene.add(bMesh);
 
  activeBullets.push({
   mesh: bMesh, pos: muzzlePos.clone(), vel: fwd.clone().multiplyScalar(220),
@@ -4524,7 +4621,7 @@ loadGLTFModel('car_body').then(model => {
   ai.meshGroup.add(aiModel);
  }
  if (renderer && scene && camera) {
-  try { renderer.compile(scene, camera); } catch (e) {}
+  try { renderer.compileAsync(scene, camera); } catch (e) {}
  }
 }).catch(() => {
  const bodyMat = new T.MeshStandardMaterial({ color: '#c0392b', roughness: 0.4, metalness: 0.3 });
@@ -4997,11 +5094,10 @@ function shootBullet() {
  fwd.normalize();
 
  const bMat = upgrades.gun >= 3 ? bulletMatPlayerLvl3 : (upgrades.gun >= 2 ? bulletMatPlayerLvl2 : bulletMatPlayer);
- const bMesh = new T.Mesh(bulletGeo, bMat);
+ const bMesh = acquireBulletMesh(bMat);
  bMesh.position.copy(muzzlePos);
  bMesh.quaternion.copy(carGroup.quaternion);
  if (upgrades.gun >= 2) bMesh.scale.set(1.5, 1.5, 1.5);
- scene.add(bMesh);
 
  const dmg = 25 + (upgrades.gun - 1) * 16;
 
@@ -5049,13 +5145,12 @@ window.triggerExhaustBackfire = triggerExhaustBackfire;
 const smokeParticles = [];
 const driftSmokeGeo = new T.SphereGeometry(0.35, 6, 6);
 const driftSmokeMat = new T.MeshBasicMaterial({ color: '#888888', transparent: true, opacity: 0.35, depthWrite: false });
+const driftSmokePool = createMeshPool(driftSmokeGeo, driftSmokeMat, 26);
 
 function spawnDriftSmoke(pos) {
  if (smokeParticles.length > 25) return;
- const m = new T.Mesh(driftSmokeGeo, driftSmokeMat);
+ const m = driftSmokePool.acquire(driftSmokeMat);
  m.position.copy(pos);
- m.scale.set(1, 1, 1);
- scene.add(m);
  smokeParticles.push({ mesh: m, life: 0.65, maxLife: 0.65 });
 }
 
@@ -5109,7 +5204,7 @@ function updateControls(dt) {
   const scale = 1.0 + progress * 2.8;
   sp.mesh.scale.set(scale, scale, scale);
   if (sp.life <= 0) {
-   scene.remove(sp.mesh);
+   driftSmokePool.release(sp.mesh);
    smokeParticles.splice(i, 1);
   }
  }
@@ -5259,12 +5354,13 @@ function updateControls(dt) {
    SEYİRCİ REYTİNGİ HAVA İKMAL SANDIĞI (AIRDROP SUPPLY CRATE)
    ========================================================== */
 const activeAirdrops = [];
+// Önceden her duman puf'u için yeni (ve hiç dispose edilmeyen) bir MeshStandardMaterial oluşturuluyordu.
+const crateSmokeMat = new T.MeshStandardMaterial({ color: '#2ecc71', roughness: 0.9, transparent: true, opacity: 0.75 });
 function spawnCrateGreenSmoke(pos) {
- const mat = new T.MeshStandardMaterial({ color: '#2ecc71', roughness: 0.9, transparent: true, opacity: 0.75 });
- const m = new T.Mesh(smokeGeo, mat);
+ if (smokePuffs.length > 60) return;
+ const m = smokePool.acquire(crateSmokeMat);
  m.position.set(pos.x + (Math.random() - 0.5) * 0.8, pos.y + 0.8, pos.z + (Math.random() - 0.5) * 0.8);
  m.scale.setScalar(0.7 + Math.random() * 0.4);
- scene.add(m);
  smokePuffs.push({
   mesh: m, vx: (Math.random() - 0.5) * 0.8, vy: 1.8 + Math.random() * 1.2, vz: (Math.random() - 0.5) * 0.8,
   grow: 2.2, life: 1.2, maxLife: 1.2
@@ -5275,6 +5371,7 @@ let nextAirdropThreshold = 18000000;
 const airdropCrateGeo = new T.BoxGeometry(2.2, 1.8, 2.2);
 const airdropCrateMat = new T.MeshStandardMaterial({ color: '#27ae60', roughness: 0.5, metalness: 0.7 });
 const parachuteMat = new T.MeshStandardMaterial({ color: '#ecf0f1', roughness: 0.8, side: T.DoubleSide });
+const airdropChuteGeo = new T.SphereGeometry(3.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
 
 function spawnAirdropCrate() {
  const playerInfo = getTrackDistance(chassisBody.position);
@@ -5289,14 +5386,14 @@ function spawnAirdropCrate() {
  dropGroup.add(crate);
 
  // Paraşüt Kubbesi
- const chuteGeo = new T.SphereGeometry(3.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
- const chute = new T.Mesh(chuteGeo, parachuteMat);
+ const chute = new T.Mesh(airdropChuteGeo, parachuteMat);
  chute.position.y = 4.2;
  dropGroup.add(chute);
 
  // Yeşil Flare Işığı
  const flare = new T.PointLight('#2ecc71', 4.0, 25);
  flare.position.y = 1.5;
+ poolLight(flare);
  dropGroup.add(flare);
 
  scene.add(dropGroup);
@@ -5548,6 +5645,7 @@ function deployStickyMine() {
 
  const led = new T.PointLight('#ff1100', 3.0, 8);
  led.position.y = 0.2;
+ poolLight(led); // sahneye gerçek ışık eklemek tüm shader'ları yeniden derletirdi
  mineGroup.add(led);
 
  scene.add(mineGroup);
@@ -5969,10 +6067,14 @@ function updateActivationPlates(dt) {
   if (radioTimer <= 0) radioBoxEl.className = '';
  }
 
- buffBoxEl.innerHTML = '';
- if (overdriveTimer > 0) buffBoxEl.innerHTML += `<div class="buff-tag buff-sword">OVERDRIVE: ${overdriveTimer.toFixed(1)}s</div>`;
- if (shieldTimer > 0) buffBoxEl.innerHTML += `<div class="buff-tag buff-shield">KALKAN: ${shieldTimer.toFixed(1)}s</div>`;
+ // Önceden her karede innerHTML = '' + += ile HTML yeniden ayrıştırılıp layout tetikleniyordu.
+ // Artık yalnızca gösterilen metin (0.1 sn çözünürlükte) değiştiğinde DOM'a yazılır.
+ let buffHtml = '';
+ if (overdriveTimer > 0) buffHtml += `<div class="buff-tag buff-sword">OVERDRIVE: ${overdriveTimer.toFixed(1)}s</div>`;
+ if (shieldTimer > 0) buffHtml += `<div class="buff-tag buff-shield">KALKAN: ${shieldTimer.toFixed(1)}s</div>`;
+ if (buffHtml !== lastBuffHtml) { lastBuffHtml = buffHtml; buffBoxEl.innerHTML = buffHtml; }
 }
+let lastBuffHtml = null;
 
 
 /* ==========================================================
@@ -6092,6 +6194,8 @@ function triggerEscapeVictory() {
  addViewers(25000000, 'ADADAN KAÇIŞ ZAFERİ!');
 }
 
+let lastLapTxt = '';
+let lastElimTxt = '';
 function updateCheckpoints(dt) {
  const carP = chassisBody.position;
  const cp = CHECKPOINTS[currentCheckpoint];
@@ -6140,12 +6244,16 @@ function updateCheckpoints(dt) {
  }
 
  currentLapTime = performance.now() - lapStartTime;
- lapTimeEl.textContent = formatTime(currentLapTime);
+ const lapTxt = formatTime(currentLapTime);
+ if (lapTxt !== lastLapTxt) { lastLapTxt = lapTxt; lapTimeEl.textContent = lapTxt; }
 
  // Eleme Modu Sayacı Güncellemesi
  if (!aiFireEnabled) { return; }
  eliminationTimer -= dt;
- if (eliminationTimerEl) eliminationTimerEl.textContent = `${Math.max(0, eliminationTimer).toFixed(1)}s`;
+ if (eliminationTimerEl) {
+  const elimTxt = `${Math.max(0, eliminationTimer).toFixed(1)}s`;
+  if (elimTxt !== lastElimTxt) { lastElimTxt = elimTxt; eliminationTimerEl.textContent = elimTxt; }
+ }
 
  if (eliminationTimer <= 0) {
   eliminationTimer = 45.0; // Sayacı sıfırla
@@ -6181,6 +6289,7 @@ function updateCheckpoints(dt) {
    LİDER TABLOSU, REYTİNG & SIRALAMA GÜNCELLEMESİ
    ========================================================== */
 let ratingsThrottleTimer = 0;
+const rivalHudEls = [];
 let lastPlayerTrackIndex = 0;
 
 function updateRatingsAndRanks(dt) {
@@ -6229,12 +6338,14 @@ function updateRatingsAndRanks(dt) {
 
  for (let i = 0; i < 4; i++) {
   const ai = aiOpponents[i];
-  const hpEl = document.getElementById(`ai${i}-hp-txt`);
-  const fillEl = document.getElementById(`ai${i}-rival-fill`);
-  if (ai && hpEl && fillEl) {
-   hpEl.textContent = ai.isDead ? 'İMHA' : `${Math.round(ai.health)}%`;
-   fillEl.style.width = `${Math.round(ai.health)}%`;
-   fillEl.style.background = ai.isDead ? '#555' : '#e74c3c';
+  const els = rivalHudEls[i] || (rivalHudEls[i] = { hp: document.getElementById(`ai${i}-hp-txt`), fill: document.getElementById(`ai${i}-rival-fill`), last: '' });
+  if (ai && els.hp && els.fill) {
+   const key = ai.isDead ? 'dead' : String(Math.round(ai.health));
+   if (key === els.last) continue;
+   els.last = key;
+   els.hp.textContent = ai.isDead ? 'İMHA' : `${key}%`;
+   els.fill.style.width = `${ai.isDead ? 0 : key}%`;
+   els.fill.style.background = ai.isDead ? '#555' : '#e74c3c';
   }
  }
 
@@ -6242,6 +6353,202 @@ function updateRatingsAndRanks(dt) {
  if (slotRPG) slotRPG.className = 'wep-slot ' + (now - lastRPGTime >= 4500 ? 'ready' : 'cooling');
  if (slotOil) slotOil.className = 'wep-slot ' + (now - lastOilTime >= 5000 ? 'ready' : 'cooling');
  if (slotCaltrop) slotCaltrop.className = 'wep-slot ' + (now - lastCaltropTime >= 5000 ? 'ready' : 'cooling');
+}
+
+/* ==========================================================
+   IŞIK HAVUZU (LIGHT POOL)
+   ==========================================================
+   Sahnede ~104 PointLight + ~19 SpotLight vardı. Three.js her ışığı her MeshStandardMaterial'ın
+   fragment shader'ına açılmış (unrolled) döngü olarak gömer: (1) her pikselde 120+ ışık hesabı,
+   (2) shader derlemesi saniyeler sürer, (3) sahneye ışık eklenip çıkarıldığında (mayın LED'i,
+   airdrop flare'i, tavan çakarı) ışık sayısı değiştiği için TÜM lit materyaller yeniden derlenir.
+   Çözüm: dekoratif ışıklar "sanal" yapılır (visible=false, render listesine girmez) ve kameraya en
+   yakın olanlar her karede sabit sayıdaki gerçek ışık slotuna kopyalanır. Shader'daki ışık sayısı
+   oyun boyunca sabit kalır -> çalışma zamanında asla yeniden derleme olmaz. */
+const POINT_LIGHT_SLOTS = 8;
+const SPOT_LIGHT_SLOTS = 5;
+const pooledLights = new Set();
+const realLights = new Set([hemi, sun, muzzleLight, nitroLight, engineFireLight, leftHeadlight, rightHeadlight]);
+const pointSlots = [];
+const spotSlots = [];
+const _lpPos = new T.Vector3();
+const _lpCandPoint = [];
+const _lpCandSpot = [];
+
+function poolLight(light) {
+ if (realLights.has(light) || light.userData.isLightSlot) return;
+ light.visible = false;
+ light.userData.pooled = true;
+ pooledLights.add(light);
+}
+
+for (let i = 0; i < POINT_LIGHT_SLOTS; i++) {
+ const l = new T.PointLight('#ffffff', 0, 10);
+ l.userData.isLightSlot = true;
+ l.userData.src = null; l.userData.fade = 0;
+ scene.add(l);
+ pointSlots.push(l);
+}
+for (let i = 0; i < SPOT_LIGHT_SLOTS; i++) {
+ const l = new T.SpotLight('#ffffff', 0, 10, Math.PI / 4, 0.3);
+ l.userData.isLightSlot = true;
+ l.userData.src = null; l.userData.fade = 0;
+ scene.add(l);
+ scene.add(l.target);
+ spotSlots.push(l);
+}
+
+function scanSceneLights() {
+ scene.traverse(o => {
+  if ((o.isPointLight || o.isSpotLight) && !realLights.has(o) && !o.userData.isLightSlot) {
+   if (o.visible || o.userData.pooled) poolLight(o);
+  }
+ });
+}
+scanSceneLights();
+
+function isLightActiveInScene(o) {
+ if (o.intensity <= 0.001) return false;
+ let p = o.parent;
+ while (p) {
+  if (!p.visible) return false;
+  if (p === scene) return true;
+  p = p.parent;
+ }
+ return false; // sahneden çıkarılmış (ör. patlamış mayın)
+}
+
+function assignSlots(slots, cands, limit) {
+ for (const slot of slots) {
+  const src = slot.userData.src;
+  if (src && src.userData.lpSelected !== true) { src.userData.lpSlot = null; slot.userData.src = null; }
+ }
+ let si = 0;
+ for (let c = 0; c < cands.length && c < limit; c++) {
+  const l = cands[c];
+  if (l.userData.lpSlot) continue;
+  while (si < slots.length && slots[si].userData.src) si++;
+  if (si >= slots.length) break;
+  slots[si].userData.src = l;
+  slots[si].userData.fade = 0;
+  l.userData.lpSlot = slots[si];
+ }
+}
+
+function reselectPooledLights(camPos) {
+ _lpCandPoint.length = 0;
+ _lpCandSpot.length = 0;
+ for (const l of pooledLights) {
+  l.userData.lpSelected = false;
+  let root = l;
+  while (root.parent) root = root.parent;
+  if (root !== scene) {
+   // Sahneden çıkarılmış (patlayan mayın, toplanan sandık). Yeniden eklenirse 1 sn'lik tarama geri alır.
+   pooledLights.delete(l);
+   if (l.userData.lpSlot) { l.userData.lpSlot.userData.src = null; l.userData.lpSlot = null; }
+   continue;
+  }
+  if (!isLightActiveInScene(l)) continue;
+  _lpPos.setFromMatrixPosition(l.matrixWorld);
+  const range = l.distance > 0 ? l.distance : 200;
+  // Kamera ışığın etki küresine ne kadar yakınsa o kadar öncelikli; atanmış ışığa küçük histerezis
+  const score = _lpPos.distanceTo(camPos) - range - (l.userData.lpSlot ? 6 : 0);
+  if (score > 140) continue;
+  l.userData.lpScore = score;
+  (l.isSpotLight ? _lpCandSpot : _lpCandPoint).push(l);
+ }
+ const byScore = (a, b) => a.userData.lpScore - b.userData.lpScore;
+ _lpCandPoint.sort(byScore);
+ _lpCandSpot.sort(byScore);
+ for (let i = 0; i < _lpCandPoint.length && i < POINT_LIGHT_SLOTS; i++) _lpCandPoint[i].userData.lpSelected = true;
+ for (let i = 0; i < _lpCandSpot.length && i < SPOT_LIGHT_SLOTS; i++) _lpCandSpot[i].userData.lpSelected = true;
+ assignSlots(pointSlots, _lpCandPoint, POINT_LIGHT_SLOTS);
+ assignSlots(spotSlots, _lpCandSpot, SPOT_LIGHT_SLOTS);
+}
+
+function syncLightSlots(slots, dt) {
+ for (const slot of slots) {
+  const src = slot.userData.src;
+  if (!src || !isLightActiveInScene(src)) { slot.intensity = 0; continue; }
+  slot.userData.fade = Math.min(1, slot.userData.fade + dt * 6);
+  slot.position.setFromMatrixPosition(src.matrixWorld);
+  slot.color.copy(src.color);
+  slot.distance = src.distance;
+  slot.decay = src.decay;
+  slot.intensity = src.intensity * slot.userData.fade;
+  if (slot.isSpotLight) {
+   slot.angle = src.angle;
+   slot.penumbra = src.penumbra;
+   slot.target.position.setFromMatrixPosition(src.target.matrixWorld);
+  }
+ }
+}
+
+let lightPoolTimer = 0;
+let lightScanTimer = 0;
+function updateLightPool(dt, cam) {
+ lightScanTimer -= dt;
+ if (lightScanTimer <= 0) { lightScanTimer = 1.0; scanSceneLights(); }
+ lightPoolTimer -= dt;
+ if (lightPoolTimer <= 0) { lightPoolTimer = 0.1; reselectPooledLights(cam.position); }
+ syncLightSlots(pointSlots, dt);
+ syncLightSlots(spotSlots, dt);
+}
+
+/* ==========================================================
+   SHADER ÖN DERLEME (ZERO-JANK WARMUP)
+   ==========================================================
+   Sahnede başlangıçta bulunmayan (oyun içinde ilk kez görünen) materyaller görünmez bir grupta
+   sahneye eklenir; ardından renderer.compileAsync() KHR_parallel_shader_compile ile tüm programları
+   ana thread'i bloklamadan derler. Derleme bitene kadar 3D çizim beklenir, menü anında tıklanabilir. */
+const shaderWarmupGroup = new T.Group();
+{
+ const warmGeo = new T.BoxGeometry(0.1, 0.1, 0.1);
+ const warmMats = [
+  rocketMat, oilMat, caltropMat, mineMat, spikeStripMat, airdropCrateMat, parachuteMat, crateSmokeMat,
+  flameMat, bladeMat, sawMat, bumperSteelMat, bulletMatPlayerLvl2, bulletMatPlayerLvl3, bulletMatEnemy,
+  bulletMatCannon, smokeMat, damageSmokeFireMat, damageSmokeDarkMat, expMat
+ ];
+ for (const m of warmMats) {
+  if (!m) continue;
+  const mesh = new T.Mesh(warmGeo, m);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  shaderWarmupGroup.add(mesh);
+ }
+ shaderWarmupGroup.visible = false;
+ scene.add(shaderWarmupGroup);
+}
+
+let shadersReady = false;
+function warmupShaders() {
+ const done = () => { shadersReady = true; };
+ try {
+  renderer.compileAsync(scene, camera).then(done, done);
+ } catch (e) {
+  done();
+ }
+ setTimeout(done, 5000); // emniyet: uzantı/sürücü sorunu olsa bile oyun asla kilitli kalmaz
+}
+warmupShaders();
+
+function renderPipView() {
+ if (!pipCanvasEl) return;
+ if (!pipRect) {
+  const r = pipCanvasEl.getBoundingClientRect();
+  if (r.width < 2 || r.height < 2) return;
+  pipRect = { x: r.left, y: innerHeight - r.bottom, w: r.width, h: r.height };
+  pipCamera.aspect = r.width / r.height;
+  pipCamera.updateProjectionMatrix();
+ }
+ const prevShadowAuto = renderer.shadowMap.autoUpdate;
+ renderer.shadowMap.autoUpdate = false; // gölge haritası ana geçişte zaten güncellendi
+ renderer.setScissorTest(true);
+ renderer.setScissor(pipRect.x, pipRect.y, pipRect.w, pipRect.h);
+ renderer.setViewport(pipRect.x, pipRect.y, pipRect.w, pipRect.h);
+ renderer.render(scene, pipCamera);
+ renderer.setScissorTest(false);
+ renderer.setViewport(0, 0, innerWidth, innerHeight);
+ renderer.shadowMap.autoUpdate = prevShadowAuto;
 }
 
 /* ==========================================================
@@ -6308,20 +6615,28 @@ function syncMeshes() {
  }
 }
 
+// Mermi/roket raycast'leri için kare başına tahsis yapılmayan ortak scratch nesneleri
+const _rayFrom = new CANNON.Vec3();
+const _rayTo = new CANNON.Vec3();
+const _rayResult = new CANNON.RaycastResult();
+const _rayOpts = { skipBackfaces: true };
+const _tmpV3a = new T.Vector3();
+const _tmpV3b = new T.Vector3();
+const _zAxis = new T.Vector3(0, 0, 1);
+
 function updateBulletsAndFX(dt) {
  for (let i = activeBullets.length - 1; i >= 0; i--) {
   const b = activeBullets[i];
   b.life -= dt;
-  if (b.life <= 0) { scene.remove(b.mesh); activeBullets.splice(i, 1); continue; }
+  if (b.life <= 0) { releaseBulletMesh(b.mesh); activeBullets.splice(i, 1); continue; }
 
-  const prev = b.pos.clone();
+  _rayFrom.set(b.pos.x, b.pos.y, b.pos.z);
   b.pos.addScaledVector(b.vel, dt);
   b.mesh.position.copy(b.pos);
 
-  const from = new CANNON.Vec3(prev.x, prev.y, prev.z);
-  const to = new CANNON.Vec3(b.pos.x, b.pos.y, b.pos.z);
-  const result = new CANNON.RaycastResult();
-  world.raycastClosest(from, to, { skipBackfaces: true }, result);
+  _rayTo.set(b.pos.x, b.pos.y, b.pos.z);
+  const result = _rayResult;
+  world.raycastClosest(_rayFrom, _rayTo, _rayOpts, result);
 
   if (result.hasHit) {
    const hitBody = result.body;
@@ -6342,7 +6657,7 @@ function updateBulletsAndFX(dt) {
      spawnSparks(hitPt, hitNorm, 12);
      applyCarDamage(b.isHeavyCannon ? 40 : 15 + Math.random() * 8, hitPt, hitNorm);
      if (b.isHeavyCannon) createExplosion(hitPt, 7, 3500);
-     scene.remove(b.mesh);
+     releaseBulletMesh(b.mesh);
      activeBullets.splice(i, 1);
      continue;
     }
@@ -6353,14 +6668,13 @@ function updateBulletsAndFX(dt) {
    spawnSparks(hitPt, hitNorm, 6); checkOilIgnition(hitPt);
 
    if (hitBody !== groundBody) {
-    const impulse = b.vel.clone().multiplyScalar(0.4);
-    hitBody.applyImpulse(new CANNON.Vec3(impulse.x, impulse.y, impulse.z), result.hitPointWorld);
+    hitBody.applyImpulse(new CANNON.Vec3(b.vel.x * 0.4, b.vel.y * 0.4, b.vel.z * 0.4), result.hitPointWorld);
     if (hitBody.targetData && hitBody.targetData.onHit) {
      hitBody.targetData.onHit(b.damage || (b.isHeavyCannon ? 45 : 25), hitPt, hitNorm);
     }
    }
 
-   scene.remove(b.mesh);
+   releaseBulletMesh(b.mesh);
    activeBullets.splice(i, 1);
   }
  }
@@ -6372,20 +6686,19 @@ function updateBulletsAndFX(dt) {
 
   if (r.target && !r.target.isDead) {
    const targetPos = r.target.body ? r.target.body.position : r.target.chassisBody.position;
-   const toTarget = new T.Vector3(targetPos.x - r.pos.x, targetPos.y - r.pos.y, targetPos.z - r.pos.z).normalize();
+   const toTarget = _tmpV3a.set(targetPos.x - r.pos.x, targetPos.y - r.pos.y, targetPos.z - r.pos.z).normalize();
    r.vel.lerp(toTarget.multiplyScalar(100), 4.5 * dt);
-   r.mesh.quaternion.setFromUnitVectors(new T.Vector3(0, 0, 1), r.vel.clone().normalize());
+   r.mesh.quaternion.setFromUnitVectors(_zAxis, _tmpV3b.copy(r.vel).normalize());
   }
 
-  const prev = r.pos.clone();
+  _rayFrom.set(r.pos.x, r.pos.y, r.pos.z);
   r.pos.addScaledVector(r.vel, dt);
   r.mesh.position.copy(r.pos);
   spawnTireSmoke(r.pos);
 
-  const from = new CANNON.Vec3(prev.x, prev.y, prev.z);
-  const to = new CANNON.Vec3(r.pos.x, r.pos.y, r.pos.z);
-  const result = new CANNON.RaycastResult();
-  world.raycastClosest(from, to, { skipBackfaces: true }, result);
+  _rayTo.set(r.pos.x, r.pos.y, r.pos.z);
+  const result = _rayResult;
+  world.raycastClosest(_rayFrom, _rayTo, _rayOpts, result);
 
   if (result.hasHit && result.body !== chassisBody) {
    const hitPt = new T.Vector3(result.hitPointWorld.x, result.hitPointWorld.y, result.hitPointWorld.z);
@@ -6434,29 +6747,14 @@ function updateBulletsAndFX(dt) {
   engineFireLight.intensity = 0;
  }
 
- const posArr = sparkGeo.attributes.position.array;
- for (let i = sparks.length - 1; i >= 0; i--) {
-  const s = sparks[i];
-  s.life -= dt;
-  if (s.life <= 0) { sparks.splice(i, 1); continue; }
-  s.vy -= 9.8 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
-  if (s.y < 0.05) { s.y = 0.05; s.vy = -s.vy * 0.4; }
- }
- for (let i = 0; i < sparkMax; i++) {
-  if (i < sparks.length) {
-   posArr[i * 3] = sparks[i].x; posArr[i * 3 + 1] = sparks[i].y; posArr[i * 3 + 2] = sparks[i].z;
-  } else {
-   posArr[i * 3 + 1] = -999;
-  }
- }
- sparkGeo.attributes.position.needsUpdate = true;
+ updateSparks(dt);
 
  for (let i = explosions.length - 1; i >= 0; i--) {
   const exp = explosions[i];
   exp.life -= dt;
   if (exp.life <= 0) {
-   scene.remove(exp.mesh);
-   if (exp.mesh.material && exp.mesh.material.dispose) exp.mesh.material.dispose();
+   exp.mesh.visible = false;
+   explosionFree.push(exp.mesh);
    explosions.splice(i, 1);
    continue;
   }
@@ -6469,7 +6767,7 @@ function updateBulletsAndFX(dt) {
  for (let i = smokePuffs.length - 1; i >= 0; i--) {
   const sm = smokePuffs[i];
   sm.life -= dt;
-  if (sm.life <= 0) { scene.remove(sm.mesh); smokePuffs.splice(i, 1); continue; }
+  if (sm.life <= 0) { smokePool.release(sm.mesh); smokePuffs.splice(i, 1); continue; }
   const prog = 1 - sm.life / sm.maxLife;
   sm.mesh.position.x += sm.vx * dt; sm.mesh.position.y += sm.vy * dt; sm.mesh.position.z += sm.vz * dt;
   const s = sm.mesh.scale.x + sm.grow * dt;
@@ -6690,19 +6988,31 @@ function updateRadar(dt = 0.016) {
 let cachedSpd = -1;
 let cachedNitro = -1;
 let cachedArmor = -1;
+let cachedHeat = -1;
+let cachedHeatColor = '';
+let cachedPitVisible = null;
 let dbgThrottleTimer = 0;
 
+let lastMenuRender = 0;
 function loop(now) {
  requestAnimationFrame(loop);
  const rawDt = Math.min(0.033, (now - last) / 1000);
  last = now;
  const dt = rawDt * timeScale;
 
+ // Shader'lar arka planda (paralel) derlenirken hiçbir şey çizilmez: ilk render'ın senkron derleme
+ // yapıp ana thread'i saniyelerce kilitlemesi ve menü tıklamalarını geciktirmesi engellenir.
+ if (!shadersReady) { last = now; return; }
+
  // Başlangıç mod seçim penceresi açıkken ve garajda değilken:
- // Ağır simülasyonu beklet, kamerayı başlangıç çizgisine odakla, 165 FPS ultra akıcı render et
+ // Ağır simülasyonu beklet, kamerayı başlangıç çizgisine odakla. Arka plan modalın altında kaldığı
+ // için 30 FPS yeterli; GPU'yu modal animasyonları ve tıklama yanıtı için serbest bırakır.
  if (!isGameStarted && !garageModeActive) {
+  if (now - lastMenuRender < 33) return;
+  lastMenuRender = now;
   camera.position.set(chassisBody.position.x - 7.5, 3.2, chassisBody.position.z - 9.0);
   camera.lookAt(chassisBody.position.x, chassisBody.position.y + 1.2, chassisBody.position.z);
+  updateLightPool(rawDt, camera);
   renderer.render(scene, camera);
   return;
  }
@@ -6739,8 +7049,8 @@ function loop(now) {
   const flashB = Math.sin(sTime * 6 + Math.PI) > 0.2;
   strobeLightR.intensity = flashR ? 4.5 : 0;
   strobeLightB.intensity = flashB ? 4.5 : 0;
-  if (strobeRed) strobeRed.material.color.set(flashR ? '#ff2200' : '#440000');
-  if (strobeBlue) strobeBlue.material.color.set(flashB ? '#0088ff' : '#001144');
+  if (strobeRed) strobeRed.material.color.copy(flashR ? STROBE_RED_ON : STROBE_RED_OFF);
+  if (strobeBlue) strobeBlue.material.color.copy(flashB ? STROBE_BLUE_ON : STROBE_BLUE_OFF);
  }
  updateCrowdAndGuards(dt);
  updateRainCanvas(dt);
@@ -6810,15 +7120,14 @@ function loop(now) {
   // Pit-Stop Bay Kontrolü (Fabrika İçi Onarım & İkmal)
   const distToPit = Math.hypot(chassisBody.position.x - 215.0, chassisBody.position.z - 160.0);
   const pSpeedKmh = chassisBody.velocity.length() * 3.6;
-  if (distToPit < 22.0 && pSpeedKmh < 85.0) {
-   if (pitHudEl) pitHudEl.style.display = 'block';
+  const inPit = distToPit < 22.0 && pSpeedKmh < 85.0;
+  if (pitHudEl && inPit !== cachedPitVisible) { cachedPitVisible = inPit; pitHudEl.style.display = inPit ? 'block' : 'none'; }
+  if (inPit) {
    const maxHP = 100 + (upgrades.armor - 1) * 35;
    carHealth = Math.min(maxHP, carHealth + 30 * dt);
    if (!isTombstoneDetached) tombstoneHealth = Math.min(tombstoneMaxHealth, tombstoneHealth + 25 * dt);
    lastRPGTime = 0; // Roket anında dolduruldu
    if (Math.random() < 0.15) spawnSparks(chassisBody.position, new T.Vector3(0, 1, 0), 3);
-  } else {
-   if (pitHudEl) pitHudEl.style.display = 'none';
   }
 
   // Okyanus Kargo Gemisine Kaçış Atlama Kontrolü (Sadece pist dışındaki batı kargo gemisine uçanlar için)
@@ -6873,8 +7182,9 @@ function loop(now) {
 
  if (ammoFill) {
   const heatPct = Math.round((1 - gunHeat) * 100);
-  ammoFill.style.width = `${heatPct}%`;
-  ammoFill.style.background = isOverheated ? '#ff2200' : (gunHeat > 0.7 ? '#ff7700' : '#ffcc44');
+  const heatColor = isOverheated ? '#ff2200' : (gunHeat > 0.7 ? '#ff7700' : '#ffcc44');
+  if (heatPct !== cachedHeat) { cachedHeat = heatPct; ammoFill.style.width = `${heatPct}%`; }
+  if (heatColor !== cachedHeatColor) { cachedHeatColor = heatColor; ammoFill.style.background = heatColor; }
  }
 
  if (nitroFill && nitroText) {
@@ -6914,10 +7224,11 @@ function loop(now) {
   dbg.textContent = `Konum: ${chassisBody.position.x.toFixed(1)}, ${chassisBody.position.z.toFixed(1)}${isDrifting ? ' · [DRIFT!]' : ''}${KEYS['shift'] ? ' · [NITRO BOOST!]' : ''}`;
  }
 
+ updateLightPool(rawDt, camera);
  renderer.render(scene, camera);
 
  // Takedown PiP (Picture-in-Picture) Köşe Ekranı Render Pass'i
- if (takedownPipActive && takedownVictimAI && pipRenderer) {
+ if (takedownPipActive && takedownVictimAI) {
   takedownPipTimer -= rawDt;
   if (takedownPipTimer <= 0) {
    takedownPipActive = false;
@@ -6935,7 +7246,7 @@ function loop(now) {
     vp.z + Math.cos(orbitAngle) * camDist
    );
    pipCamera.lookAt(vp.x, vp.y + 0.6, vp.z);
-   pipRenderer.render(scene, pipCamera);
+   renderPipView();
   }
  }
 }

@@ -9,6 +9,8 @@
   html,body{height:100%;overflow:hidden;background:#0a0a0c;font-family:system-ui,sans-serif}
   #app{position:fixed;inset:0}
   canvas{display:block}
+  /* renderer.setSize(w, h, false) stil yazmaz; DPR>1 ekranlarda canvas viewport'tan taşıp kırpılıyordu */
+  #cv{width:100%;height:100%}
   #rain-canvas{position:absolute;inset:0;pointer-events:none;z-index:15}
   #hud{position:absolute;left:14px;bottom:14px;color:#fff;font-size:12px;text-shadow:0 1px 4px #000;pointer-events:none;line-height:1.6}
   #hud b{color:#ffcc44}
@@ -401,7 +403,8 @@
     top: 295px;
     right: 18px;
     width: 280px;
-    background: rgba(8, 10, 14, 0.95);
+    /* Görüntü artık ana canvas'a scissor ile çiziliyor; pencere ortası şeffaf olmalı */
+    background: transparent;
     border: 2px solid #e74c3c;
     border-radius: 8px;
     overflow: hidden;
@@ -410,13 +413,11 @@
     display: none;
     flex-direction: column;
     pointer-events: none;
-    transform: scale(0.9) translateX(25px);
     opacity: 0;
-    transition: transform 0.22s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.22s ease;
+    transition: opacity 0.22s ease;
   }
   #takedown-pip-container.active {
     display: flex;
-    transform: scale(1) translateX(0);
     opacity: 1;
   }
   .pip-header {
@@ -441,11 +442,13 @@
   }
   @keyframes pip-rec-blink { from { opacity: 0.35; } to { opacity: 1; } }
   .pip-cam-id { font-size: 9px; opacity: 0.9; background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 3px; }
+  /* Yer tutucu: 3D görüntü bu dikdörtgene ana renderer tarafından scissor/viewport ile çizilir */
   #pip-canvas {
     width: 280px;
     height: 158px;
     display: block;
-    background: #080a0e;
+    background: transparent;
+    visibility: hidden;
   }
   .pip-scanlines {
     position: absolute;
