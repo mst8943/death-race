@@ -356,3 +356,13 @@
   3. **`fmtTR`**: `toLocaleString('tr-TR')` yerine önbellekli `Intl.NumberFormat` (her mermi isabetinde çağrılıyordu).
   4. **TTS**: Sesli telsiz 4 sn'de en fazla bir kez (`SPEECH_COOLDOWN_MS`); motor/kalabalık AudioParam güncellemeleri 20/10 Hz.
   5. **`?perf` paneli**: FPS, en kötü kare, >50 ms donmaların dökümü (aralık / JS / fizik / render / olay). `window.__perfLog`.
+
+## [Fix] Oyun Hataları: Yarış Sonu, Kayıt, Sıralama, Eleme Ayarı
+- **Yarış bitişi:** 3. tur tamamlanınca sayaç 1'e dönüyordu. Artık `finishRace()` sıralamaya göre ödül verir (1.: 300.000, 2.: 150.000, 3.: 75.000, 4.: 40.000, 5.: 20.000) ve sonuç ekranını açar (finiş sırası + bu yarışta kazanılan). Bitişten sonra hasar ve eleme durur.
+- **İlerleme kaydı:** `death_race_progress_v1` (localStorage): krediler, yükseltmeler, boya, tüm garaj modifiyeleri ve maç ayarları. 5 sn'de bir değişiklik varsa + sayfa kapanırken kaydedilir; açılışta `loadProgress()` ile sessizce (`silentRestore`) yüklenir.
+- **Sıralama:** Rakiplerin `lapCount`'u hiç artmıyordu; başlangıç çizgisini geçen rakip sona düşüyordu. `updateRaceDistance()` oyuncu ve rakipler için pist ilerlemesinin sarmasından tur sayar; eleme de aynı mesafeyi kullanır.
+- **Eleme ayarı:** "KAPALI" seçilince sayaç yine araç patlatıyordu; "30 sn" ilk elemeden sonra 45 sn'ye dönüyordu. İkisi düzeltildi.
+- **Telsiz tekrarı:** Sıra yükselme mesajı en fazla 8 sn'de bir.
+- **Kaçış ödülü:** Modalda yazan +500.000 PTS artık gerçekten veriliyor.
+- **Partiküller:** Yağmur ve slipstream `frustumCulled=false`.
+- Not: `customization.aiAggression`, `ammoType` ve `decal` kaydediliyor ama oyunda henüz bir etkileri yok (mekanik genişletme aşamasında bağlanacak).

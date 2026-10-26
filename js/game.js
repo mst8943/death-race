@@ -45,6 +45,8 @@ const slotCaltrop = document.getElementById('slot-caltrop');
 // Number.prototype.toLocaleString her çağrıda yeni bir Intl.NumberFormat kurar (çağrı başına ~0.1-1 ms).
 // Her mermi isabetinde addViewers() bunu çağırıyordu; tek bir önbellekli formatlayıcı kullanılır.
 const TR_NUMBER_FORMAT = new Intl.NumberFormat('tr-TR');
+// Kayıtlı ilerleme geri yüklenirken garaj fonksiyonlarının banner/telsiz/ses üretmesini engeller
+let silentRestore = false;
 function fmtTR(n) { return TR_NUMBER_FORMAT.format(n); }
 
 const Snd = {
@@ -108,6 +110,7 @@ const Snd = {
  get destVoice() { return this.voiceGain || this.masterGain || (this.ctx ? this.ctx.destination : null); },
 
  init() {
+  if (silentRestore) return;
   if (!this.ctx) {
    const AudioContext = window.AudioContext || window.webkitAudioContext;
    if (AudioContext) {
@@ -1090,13 +1093,27 @@ function toggleGarage() {
 }
 window.toggleGarage = toggleGarage;
 
+const UPGRADE_COSTS = {
+ engine: [0, 50000, 120000, 200000, 350000],
+ armor: [0, 60000, 130000, 220000, 380000],
+ gun: [0, 55000, 110000, 190000, 320000],
+ rocket: [0, 75000, 150000, 250000, 420000]
+};
+
+// Garajdaki seviye/fiyat etiketlerini mevcut yükseltmelere göre yeniler (kayıt yüklenince de kullanılır)
+function refreshUpgradeUI() {
+ for (const type of Object.keys(UPGRADE_COSTS)) {
+  const lvlEl = document.getElementById(`lvl-${type}`);
+  const costEl = document.getElementById(`cost-${type}`);
+  if (lvlEl) lvlEl.textContent = `SEVİYE ${upgrades[type]}/5`;
+  if (costEl) costEl.textContent = upgrades[type] < 5 ? `${fmtTR(UPGRADE_COSTS[type][upgrades[type]])} PTS` : 'MAKSİMUM';
+ }
+ if (garageCreditsEl) garageCreditsEl.textContent = fmtTR(playerCredits);
+ if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
+}
+
 function upgradeItem(type) {
- const costs = {
-  engine: [0, 50000, 120000, 200000, 350000],
-  armor: [0, 60000, 130000, 220000, 380000],
-  gun: [0, 55000, 110000, 190000, 320000],
-  rocket: [0, 75000, 150000, 250000, 420000]
- };
+ const costs = UPGRADE_COSTS;
  const curLvl = upgrades[type];
  if (curLvl >= 5) { showBanner('BU YÜKSELTMEDE MAKSİMUM SEVİYEYE ULAŞILDI!'); return; }
  const cost = costs[type][curLvl];
@@ -1237,6 +1254,7 @@ for (let i = 0; i < RAIN_COUNT; i++) {
 rainGeo.setAttribute('position', new T.BufferAttribute(rainPos, 3));
 const rainMat = new T.PointsMaterial({ color: '#7ab8cc', size: 0.18, transparent: true, opacity: 0.65 });
 const rainPoints = new T.Points(rainGeo, rainMat);
+rainPoints.frustumCulled = false; // konumlar her karede oyuncunun etrafında yeniden üretiliyor; ilk bounding sphere yanlış kırpıyordu
 scene.add(rainPoints);
 rainPoints.visible = false;
 
@@ -2297,6 +2315,7 @@ let bannerTimer = 0;
 let radioTimer = 0;
 
 function showBanner(text, cssClass = '') {
+ if (silentRestore) return;
  bannerEl.textContent = text;
  bannerEl.className = 'show ' + cssClass;
  bannerTimer = 2.4;
@@ -2361,6 +2380,7 @@ function speakVoice(text, speaker = 'case') {
 const radioSpeakerLabelEl = document.getElementById('radio-speaker-label');
 
 function showRadioMessage(text, speaker = 'case', voiceLine = null) {
+ if (silentRestore) return;
   Snd.playRadioStatic();
  if (!radioBoxEl) return;
  radioTextEl.textContent = `"${text}"`;
@@ -3452,6 +3472,7 @@ let isGameStarted = false;
 window.isGameStarted = false;
 
 function setGameMode(mode, closeModal = false) {
+ if (!isGameStarted) raceStartCredits = playerCredits;
  isGameStarted = true;
  window.isGameStarted = true;
  currentGameMode = mode;
@@ -3563,7 +3584,7 @@ function toggleGodMode() {
 window.toggleGodMode = toggleGodMode;
 
 function applyCarDamage(dmg, contactPoint = null, normal = null) {
- if (carHealth <= 0 || godMode) return;
+ if (carHealth <= 0 || godMode || raceFinished) return;
 
  if (shieldTimer > 0) {
   if (contactPoint) spawnSparks(new T.Vector3(contactPoint.x, contactPoint.y, contactPoint.z), new T.Vector3(0, 1, 0), 15);
@@ -4664,6 +4685,11 @@ loadGLTFModel('car_body').then(model => {
   ai.carBodyMesh = aiModel;
   ai.meshGroup.add(aiModel);
  }
+ // Kayıttan gelen boya model yüklenince uygulanır (model asenkron yüklendiği için)
+ if (currentSkin !== 'classic_black') {
+  silentRestore = true;
+  try { applyCarSkin(currentSkin); } finally { silentRestore = false; }
+ }
  if (renderer && scene && camera) {
   try { renderer.compileAsync(scene, camera); } catch (e) {}
  }
@@ -5572,6 +5598,7 @@ for (let i = 0; i < 40; i++) {
 slipLinesGeo.setAttribute('position', new T.Float32BufferAttribute(slipLinesPos, 3));
 const slipLinesMat = new T.PointsMaterial({ color: '#00f0ff', size: 0.18, transparent: true, opacity: 0.8 });
 const slipParticles = new T.Points(slipLinesGeo, slipLinesMat);
+slipParticles.frustumCulled = false;
 slipParticles.visible = false;
 carGroup.add(slipParticles);
 
@@ -5996,12 +6023,15 @@ function showPostRaceStats(isEscape = false) {
  document.getElementById('stat-max-speed').textContent = Math.round(raceStats.maxSpeed) + ' km/s';
  document.getElementById('stat-nearmiss').textContent = raceStats.nearMisses;
  document.getElementById('stat-drift').textContent = Math.round(raceStats.driftScore) + ' PTS';
- document.getElementById('stat-credits').textContent = fmtTR(playerCredits) + ' PTS';
+ document.getElementById('stat-credits').textContent = '+' + fmtTR(Math.max(0, playerCredits - raceStartCredits)) + ' PTS';
+ const rankEl = document.getElementById('stat-rank');
+ if (rankEl) rankEl.textContent = isEscape ? 'KAÇTI' : `${raceStats.finishRank || playerRank}. SIRA (+${fmtTR(raceStats.finishReward || 0)})`;
  document.getElementById('stat-viewers').textContent = fmtTR(currentViewers);
 
  const titleEl = document.getElementById('post-race-mvp-title');
  if (titleEl) {
   if (isEscape) titleEl.textContent = 'MVP: ÖZGÜRLÜK SAVAŞÇISI (ADADAN KAÇTI)';
+  else if ((raceStats.finishRank || playerRank) === 1) titleEl.textContent = '🏆 ŞAMPİYON: FRANKENSTEIN (1. SIRA)';
   else if (raceStats.takedowns >= 3) titleEl.textContent = 'MVP: TERMINAL ISLAND KASABI (3+ TAKEDOWN)';
   else titleEl.textContent = 'MVP: FRANKENSTEIN (ARENA ŞAMPİYONU)';
  }
@@ -6229,7 +6259,6 @@ function breachFortressGate() {
 window.breachFortressGate = breachFortressGate;
 
 function triggerEscapeVictory() {
-  showPostRaceStats(true);
  if (isEscaped) return;
  isEscaped = true;
  timeScale = 0.2;
@@ -6239,11 +6268,38 @@ function triggerEscapeVictory() {
  showBanner('ADADAN KAÇIŞ BAŞARILI! ÖZGÜRLÜK!', 'buff-shield');
  showRadioMessage('BAŞARDIK! Kargo gemisine indik! Terminal Island cehennemi bitti!', 'case');
  addViewers(25000000, 'ADADAN KAÇIŞ ZAFERİ!');
+ playerCredits += 500000; // modalda vaat edilen ödül önceden hiç verilmiyordu
+ if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
+ saveProgress();
 }
 
 let lastLapTxt = '';
 let lastElimTxt = '';
+let raceFinished = false;
+let raceStartCredits = 150000;
+const FINISH_REWARDS = [300000, 150000, 75000, 40000, 20000];
+
+function finishRace() {
+ if (raceFinished) return;
+ raceFinished = true;
+ // Bitiş anındaki gerçek sıralamayı hesapla
+ ratingsThrottleTimer = 1;
+ updateRatingsAndRanks(0);
+ const reward = FINISH_REWARDS[playerRank - 1] || 20000;
+ playerCredits += reward;
+ if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
+ raceStats.finishRank = playerRank;
+ raceStats.finishReward = reward;
+ saveProgress();
+ Snd.playTakedownSting();
+ showBanner(playerRank === 1 ? '🏆 YARIŞI BİRİNCİ BİTİRDİN!' : `🏁 YARIŞ BİTTİ! ${playerRank}. SIRA`, 'buff-shield');
+ showRadioMessage(playerRank === 1 ? 'Kazandık Frankenstein! Terminal Island şampiyonu sensin!' : `Yarış bitti, ${playerRank}. sıradayız. Garajda güçlenip tekrar deneyelim!`, 'case');
+ timeScale = 0.35;
+ setTimeout(() => { timeScale = 1.0; showPostRaceStats(false); }, 1600);
+}
+
 function updateCheckpoints(dt) {
+ if (raceFinished) return;
  const carP = chassisBody.position;
  const cp = CHECKPOINTS[currentCheckpoint];
  const dx = carP.x - cp.pos.x;
@@ -6261,7 +6317,9 @@ function updateCheckpoints(dt) {
    showRadioMessage(`Tur ${lapCount} bitti! Harika sürüyorsun Frankenstein!`);
    addViewers(250000, `TUR ${lapCount} TAMAMLANDI!`);
    Snd.playCheckpoint();
-   lapCount = (lapCount % MAX_LAPS) + 1;
+   // Önceden 3. turdan sonra sayaç 1'e dönüyor ve yarış hiç bitmiyordu
+   if (lapCount >= MAX_LAPS) { finishRace(); return; }
+   lapCount = lapCount + 1;
    updateLapWeather(lapCount);
    lapNumEl.textContent = lapCount;
    lapStartTime = performance.now();
@@ -6295,7 +6353,7 @@ function updateCheckpoints(dt) {
  if (lapTxt !== lastLapTxt) { lastLapTxt = lapTxt; lapTimeEl.textContent = lapTxt; }
 
  // Eleme Modu Sayacı Güncellemesi
- if (!aiFireEnabled) { return; }
+ if (!aiFireEnabled || customization.elimination === 'off') { return; }
  eliminationTimer -= dt;
  if (eliminationTimerEl) {
   const elimTxt = `${Math.max(0, eliminationTimer).toFixed(1)}s`;
@@ -6303,17 +6361,14 @@ function updateCheckpoints(dt) {
  }
 
  if (eliminationTimer <= 0) {
-  eliminationTimer = 45.0; // Sayacı sıfırla
+  eliminationTimer = customization.elimination === '30s' ? 30.0 : 45.0; // Sayacı seçili ayara göre sıfırla
 
-  // O anki en son sıradaki aracı bul ve patlat!
-  const playerProgress = getTrackDistance(chassisBody.position);
-  const playerTotalDist = (lapCount - 1) * TRACK_LENGTH + playerProgress.distance;
-  const racers = [{ id: 'player', name: 'FRANKENSTEIN', totalDist: playerTotalDist, isPlayer: true, health: carHealth }];
+  // O anki en son sıradaki aracı bul ve patlat! (sıralama sistemiyle aynı tur-farkındalıklı mesafe)
+  const racers = [{ id: 'player', name: 'FRANKENSTEIN', totalDist: playerRankState.raceDist || 0, isPlayer: true, health: carHealth }];
 
   for (let ai of aiOpponents) {
    if (ai.isDead) continue;
-   const aiProg = getTrackDistance(ai.chassisBody.position);
-   racers.push({ id: ai.id, name: ai.name, totalDist: (ai.lapCount - 1) * TRACK_LENGTH + aiProg.distance, isPlayer: false, ai });
+   racers.push({ id: ai.id, name: ai.name, totalDist: ai.raceDist || 0, isPlayer: false, ai });
   }
 
   racers.sort((a, b) => b.totalDist - a.totalDist);
@@ -6339,6 +6394,24 @@ let ratingsThrottleTimer = 0;
 const rivalHudEls = [];
 let lastPlayerTrackIndex = 0;
 
+// Pist ilerlemesi başlangıç çizgisinde TRACK_LENGTH'ten 0'a sarar. Önceden rakiplerin lapCount'u hiç
+// artmadığı için çizgiyi geçen rakip sıralamada en sona düşüyordu. Artık her araç için sarma algılanıp
+// tur sayısı (rankLaps) tutulur; çizginin gerisinde başlayan araçlar -1. turda başlar.
+function updateRaceDistance(state, progressDist) {
+ if (state.rankPrev === undefined) {
+  state.rankLaps = progressDist > TRACK_LENGTH * 0.5 ? -1 : 0;
+ } else if (state.rankPrev > TRACK_LENGTH * 0.75 && progressDist < TRACK_LENGTH * 0.25) {
+  state.rankLaps++;
+ } else if (state.rankPrev < TRACK_LENGTH * 0.25 && progressDist > TRACK_LENGTH * 0.75) {
+  state.rankLaps--;
+ }
+ state.rankPrev = progressDist;
+ state.raceDist = state.rankLaps * TRACK_LENGTH + progressDist;
+ return state.raceDist;
+}
+const playerRankState = {};
+let lastRankMsgTime = 0;
+
 function updateRatingsAndRanks(dt) {
  ratingsThrottleTimer += dt;
  if (ratingsThrottleTimer < 0.2) return;
@@ -6350,7 +6423,7 @@ function updateRatingsAndRanks(dt) {
 
  const playerProgress = getTrackDistance(chassisBody.position, lastPlayerTrackIndex);
  lastPlayerTrackIndex = playerProgress.index;
- const playerTotalDist = (lapCount - 1) * TRACK_LENGTH + playerProgress.distance;
+ const playerTotalDist = updateRaceDistance(playerRankState, playerProgress.distance);
 
  const racers = [
   { id: 'player', name: 'FRANKENSTEIN', totalDist: playerTotalDist, isPlayer: true }
@@ -6360,7 +6433,8 @@ function updateRatingsAndRanks(dt) {
   ai.lastTrackIndex = (ai.lastTrackIndex !== undefined) ? ai.lastTrackIndex : 0;
   const aiProgress = getTrackDistance(ai.chassisBody.position, ai.lastTrackIndex);
   ai.lastTrackIndex = aiProgress.index;
-  const aiTotalDist = ai.isDead ? -9999 : ((ai.lapCount - 1) * TRACK_LENGTH + aiProgress.distance);
+  const aiRaceDist = updateRaceDistance(ai, aiProgress.distance);
+  const aiTotalDist = ai.isDead ? -9999 : aiRaceDist;
   racers.push({ id: ai.id, name: ai.name, totalDist: aiTotalDist, isPlayer: false });
  }
 
@@ -6368,7 +6442,10 @@ function updateRatingsAndRanks(dt) {
  const newRank = racers.findIndex(r => r.isPlayer) + 1;
 
  if (newRank !== playerRank) {
-  if (newRank < playerRank) {
+  // Rakiple yan yana giderken sıra sürekli değişip her seferinde telsiz mesajı çıkıyordu: 8 sn bekleme
+  const tNow = performance.now();
+  if (newRank < playerRank && tNow - lastRankMsgTime > 8000) {
+   lastRankMsgTime = tNow;
    showBanner(`${newRank}. SIRAYA YÜKSELDİN!`, 'buff-sword');
    showRadioMessage(newRank === 1 ? 'Lideriz Frankenstein! Yerimizi koru!' : `${newRank}. sıraya çıktık, öndekini avla!`);
    addViewers(75000);
@@ -7609,6 +7686,66 @@ function testAudioSound(type) {
 }
 window.testAudioSound = testAudioSound;
 window.Snd = Snd;
+
+/* ==========================================================
+   İLERLEME KAYDI (KREDİ, YÜKSELTME, BOYA, MODİFİYE)
+   ========================================================== */
+const SAVE_KEY = 'death_race_progress_v1';
+let lastSaveJson = '';
+function saveProgress() {
+ try {
+  const json = JSON.stringify({ credits: playerCredits, upgrades, skin: currentSkin, customization });
+  if (json === lastSaveJson) return;
+  localStorage.setItem(SAVE_KEY, json);
+  lastSaveJson = json;
+ } catch (e) {}
+}
+window.saveProgress = saveProgress;
+
+function loadProgress() {
+ let data = null;
+ try { data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) {}
+ if (!data || typeof data !== 'object') return;
+ silentRestore = true;
+ try {
+  if (Number.isFinite(data.credits) && data.credits >= 0) playerCredits = Math.floor(data.credits);
+  if (data.upgrades) {
+   for (const k of Object.keys(upgrades)) {
+    const v = data.upgrades[k];
+    if (Number.isInteger(v) && v >= 1 && v <= 5) upgrades[k] = v;
+   }
+  }
+  const c = data.customization || {};
+  if (c.wheelBlades && c.wheelBlades !== 'none') applyWheelBlades(c.wheelBlades);
+  if (c.bumperKit && c.bumperKit !== 'standard') applyBumperKit(c.bumperKit);
+  if (c.roofKit && c.roofKit !== 'none') applyRoofKit(c.roofKit);
+  if (c.nitroFlame && c.nitroFlame !== 'cyan') applyNitroFlame(c.nitroFlame);
+  if (c.decal && c.decal !== 'none') applyDecal(c.decal);
+  if (c.ammoType && c.ammoType !== 'fmj') applyAmmoType(c.ammoType);
+  if (c.aiAggression && c.aiAggression !== 'normal') applyMatchSetting('aiAggression', c.aiAggression);
+  if (c.elimination && c.elimination !== '45s') applyMatchSetting('elimination', c.elimination);
+  if (data.skin && CAR_SKINS[data.skin]) {
+   currentSkin = data.skin;
+   if (carBodyMesh) applyCarSkin(data.skin);
+  }
+  updateCarVisualUpgrades();
+  updateArmorVisuals();
+  updateGarageStatsUI();
+  carHealth = 100 + (upgrades.armor - 1) * 35;
+ } catch (e) {
+  console.warn('Kayıt yüklenemedi:', e);
+ } finally {
+  silentRestore = false;
+ }
+ refreshUpgradeUI();
+ lastSaveJson = JSON.stringify({ credits: playerCredits, upgrades, skin: currentSkin, customization });
+}
+loadProgress();
+raceStartCredits = playerCredits;
+// Garaj seçimleri, krediler ve yükseltmeler her değiştiğinde (5 sn içinde) ve sayfa kapanırken kaydedilir
+setInterval(saveProgress, 5000);
+addEventListener('pagehide', saveProgress);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveProgress(); });
 
 window.isGameReady = true;
 if (window.pendingGameMode) {
