@@ -1163,21 +1163,28 @@ const CAR_SKINS = {
 };
 let currentSkin = 'classic_black';
 
+// Gövde boyası malzeme adına göre uygulanır: 'T_Govde' ana boya, 'GovdeKoyu' aynı rengin koyu tonu.
+// (Önceden mesh adı 'chassis' aranıyordu; GLTFLoader çok-malzemeli parçaları 'Cube_1' gibi alt mesh'lere
+// böldüğü için boya ve rakip renkleri hiç uygulanmıyordu.)
+const PAINT_MAT = 'T_Govde';
+const PAINT_MAT_DARK = 'GovdeKoyu';
+function paintCarBody(root, colorStyle, metalness = null, roughness = null) {
+ root.traverse(o => {
+  if (!o.isMesh || !o.material) return;
+  const n = o.material.name;
+  if (n !== PAINT_MAT && n !== PAINT_MAT_DARK) return;
+  o.material.color.setStyle(colorStyle);
+  if (n === PAINT_MAT_DARK) o.material.color.multiplyScalar(0.45);
+  if (metalness !== null) o.material.metalness = metalness;
+  if (roughness !== null) o.material.roughness = roughness;
+ });
+}
+
 function applyCarSkin(skinId) {
  const skin = CAR_SKINS[skinId];
  if (!skin) return;
  currentSkin = skinId;
- if (carBodyMesh) {
-  carBodyMesh.traverse(o => {
-   if (o.isMesh && o.material) {
-    if (o.name === 'chassis' || o.name.startsWith('part_')) {
-     o.material.color.setStyle(skin.bodyColor);
-     o.material.metalness = skin.metalness;
-     o.material.roughness = skin.roughness;
-    }
-   }
-  });
- }
+ if (carBodyMesh) paintCarBody(carBodyMesh, skin.bodyColor, skin.metalness, skin.roughness);
  document.querySelectorAll('.skin-card').forEach(el => el.classList.remove('active'));
  const activeEl = document.getElementById(`skin-${skinId}`);
  if (activeEl) activeEl.classList.add('active');
@@ -4974,14 +4981,13 @@ loadGLTFModel('car_body').then(model => {
 
  for (let ai of aiOpponents) {
   const aiModel = model.clone(true);
+  // Rakip boyası: yalnızca boya malzemeleri kopyalanır (oyuncunun boyası rakiplere bulaşmasın)
   aiModel.traverse(o => {
-   if (o.isMesh && o.material) {
-    if (o.name === 'chassis' || o.name.startsWith('part_')) {
-     o.material = o.material.clone();
-     o.material.color.setStyle(ai.cfg.bodyColor);
-    }
+   if (o.isMesh && o.material && (o.material.name === PAINT_MAT || o.material.name === PAINT_MAT_DARK)) {
+    o.material = o.material.clone();
    }
   });
+  paintCarBody(aiModel, ai.cfg.bodyColor);
   aiModel.position.set(0, BODY_Y_OFFSET, 0);
   ai.carBodyMesh = aiModel;
   ai.meshGroup.add(aiModel);

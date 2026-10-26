@@ -406,3 +406,7 @@
 - **Takedown** (`TAKEDOWN_TYPES`, `resolveTakedownType`): `applyAIDamage(ai, dmg, pt, norm, source)` — kaynaklar: ram, wall, flip, gun, rocket, mine, oil, fire, trap, crusher, airstrike, blades; oyuncu dışı: crash, ai, elimination, misc (ödül/kombo/kelle avı yok, izleyici puanı yok). AI çarpışma dinleyicisi: oyuncuya çarpma = ram, oyuncu son 2.5 sn'de vurduysa wall. Takla: araç ters (up.y < 0.3). Ödül 65.000 x çarpan. `raceStats.takedownTypes` sonuç ekranında.
 - **Hava** (`WEATHER_FX`, `weatherGrip()`): tutuş çarpanı oyuncu ve AI frictionSlip'e; sis near/far; `#weather-chip`.
 - **NaN koruması** (`guardPhysicsNaN`): her fizik adımından sonra oyuncu ve AI için son sağlam konum.
+
+## [Fix] Boya & Rakip Renkleri + Gemini Modelleme Komutu
+- Garaj boyası ve rakip renkleri hiç uygulanmıyordu: kod mesh adı `chassis`/`part_*` arıyordu ama GLTFLoader çok-malzemeli nesneleri `Cube_1` gibi alt mesh'lere bölüyor. Artık `paintCarBody()` malzeme adına göre boyar: `T_Govde` ana boya, `GovdeKoyu` koyu ton (x0.45). Rakipler yalnızca boya malzemelerini kopyalar (oyuncu boyası rakiplere bulaşmaz).
+- `blender/GEMINI_PROMPT.md`: ana araç v2 için Gemini'ye verilecek komut (eksenler, zarf, tekerlek konumları, montaj noktaları, 6 nesne adı, boya malzeme adları, bütçe ≤12k/≤1.2k üçgen, ≤12 malzeme, render + doğrulama). Model gelince: `models/`'e kopyala → `python tools/pack_models.py` → oyun içi test.
