@@ -1037,6 +1037,7 @@ let savedRaceState = null;
 function toggleGarage() {
  const isOpen = garageModalEl.classList.toggle('open');
  garageModeActive = isOpen;
+ document.body.classList.toggle('garage-open', isOpen);
  if (isOpen) {
   isGameStarted = true;
   window.isGameStarted = true;
@@ -5060,6 +5061,7 @@ let isDrifting = false;
 let playerOilTimer = 0;
 
 addEventListener('keydown', e => {
+ if (e.key === 'F1') { e.preventDefault(); document.body.classList.toggle('show-keys'); return; }
  const k = e.key.toLowerCase();
  KEYS[k] = true;
  Snd.init();
@@ -6712,9 +6714,11 @@ function updateCareerCard() {
  const el = document.getElementById('career-card-desc');
  if (!el) return;
  const ev = CAREER_EVENTS[careerProgress.event] || CAREER_EVENTS[0];
- el.textContent = careerProgress.done
-  ? 'Kariyer tamamlandı! Final etabını istediğin kadar tekrar oynayabilirsin.'
-  : `Etap ${careerProgress.event + 1}/${CAREER_EVENTS.length}: ${ev.name} · ${ev.laps} tur · ${(DIFFICULTY[ev.difficulty] || DIFFICULTY.normal).name} · En az ${ev.needRank}. ol`;
+ const steps = CAREER_EVENTS.map((_, i) => i < careerProgress.event || careerProgress.done ? '●' : (i === careerProgress.event ? '◉' : '○')).join(' ');
+ // Sabit metinler (kullanıcı girdisi yok) — innerHTML güvenli
+ el.innerHTML = careerProgress.done
+  ? `<span style="letter-spacing:3px;color:#c39bd3">${steps}</span><br><b>Kariyer tamamlandı!</b> Final etabını istediğin kadar tekrar oynayabilirsin.`
+  : `<span style="letter-spacing:3px;color:#c39bd3">${steps}</span><br><b>Etap ${careerProgress.event + 1}/${CAREER_EVENTS.length}: ${ev.name}</b><br>${ev.laps} tur · ${(DIFFICULTY[ev.difficulty] || DIFFICULTY.normal).name} · ${ev.elimination === 'off' ? 'eleme yok' : 'eleme ' + ev.elimination} · <b>en az ${ev.needRank}. ol</b>`;
 }
 
 /* ==========================================================
@@ -7855,6 +7859,7 @@ function loop(now) {
    (telsiz/TTS, patlama, takedown) kaydedilir. window.__perfLog konsoldan da okunabilir.
    Eğer "aralık" büyük ama "JS" küçükse donma GPU sürücüsü / GC / tarayıcı kaynaklıdır. */
 if (/[?&]perf\b/.test(location.search)) {
+ document.body.classList.add('perf');
  const perfEl = document.createElement('div');
  perfEl.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;background:rgba(0,0,0,.78);color:#0f0;font:11px/1.35 monospace;padding:6px 8px;border-radius:4px;pointer-events:none;white-space:pre;max-width:46vw';
  document.body.appendChild(perfEl);
@@ -8085,6 +8090,7 @@ function loadProgress() {
  lastSaveJson = JSON.stringify({ credits: playerCredits, upgrades, skin: currentSkin, customization, career: careerProgress });
 }
 loadProgress();
+refreshUpgradeUI();
 updateCareerCard();
 raceStartCredits = playerCredits;
 // Garaj seçimleri, krediler ve yükseltmeler her değiştiğinde (5 sn içinde) ve sayfa kapanırken kaydedilir

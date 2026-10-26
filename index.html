@@ -1006,6 +1006,45 @@
     box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
   }
 
+
+  /* ==========================================================
+     HUD YERLEŞİM DÜZENİ (üst üste binmeleri giderir)
+     ========================================================== */
+  /* Üst orta bildirim sütunu: mod barı → eleme → boss → kelle avı → banner → nemesis → slipstream → combo */
+  #elimination-hud{top:58px}
+  #boss-hud{top:92px}
+  #bounty-hud{top:140px}
+  #banner{top:198px}
+  #nemesis-hud{top:232px}
+  #slipstream-hud{top:266px}
+  #combo-hud{top:300px}
+
+  /* Telsiz kutusu tur süresini ve radarı kapatıyordu: radarın altına */
+  #radio-box{top:306px;max-width:330px}
+
+  /* Tuş listesi: varsayılan gizli, F1 ile açılan panel */
+  #hud{display:none;left:14px;bottom:134px;max-width:min(560px,calc(100vw - 28px));background:rgba(10,12,18,0.92);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 14px;line-height:2;z-index:120;box-shadow:0 8px 28px rgba(0,0,0,0.8)}
+  body.show-keys #hud{display:block}
+  #hud-toggle{position:absolute;left:14px;bottom:14px;font-size:11px;font-weight:800;letter-spacing:0.5px;color:#cfd6e0;background:rgba(10,12,18,0.8);border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:4px 10px;cursor:pointer;z-index:121;user-select:none}
+  #hud-toggle:hover{border-color:#ffcc44;color:#ffcc44}
+  #dbg{display:none}
+  body.perf #dbg{display:inline}
+
+  /* Garaj açıkken yarış HUD'u gizlenir (garaj alt barı ve kartlarla çakışıyordu) */
+  body.garage-open #race-hud, body.garage-open #ratings-box, body.garage-open #rivals-hud,
+  body.garage-open #radar-hud, body.garage-open #weapons-hud, body.garage-open #armor-bar,
+  body.garage-open #tombstone-bar, body.garage-open #speed, body.garage-open #nitro-bar,
+  body.garage-open #ammo-bar, body.garage-open #hud, body.garage-open #hud-toggle,
+  body.garage-open #crosshair, body.garage-open #radio-box, body.garage-open #buff-box,
+  body.garage-open #elimination-hud, body.garage-open #game-mode-hud, body.garage-open #boss-hud,
+  body.garage-open #bounty-hud, body.garage-open #nemesis-hud, body.garage-open #slipstream-hud,
+  body.garage-open #combo-hud, body.garage-open #pit-hud, body.garage-open #takedown-pip-container { display:none !important }
+
+
+  /* Küçük ekranlar (≤ 820 px yükseklik): rakip listesi ve radar biraz küçülür */
+  @media (max-height: 820px) {
+    #rivals-hud{transform:scale(0.92);transform-origin:top right}
+  }
 </style>
 <script>
   window.isGameReady = false;
@@ -1306,6 +1345,7 @@
   <div class="wep-slot ready" id="slot-shunt">💥 [Z/C] YAN SHUNT</div>
 </div>
 
+<div id="hud-toggle" onclick="document.body.classList.toggle('show-keys')">⌨ TUŞLAR [F1]</div>
 <div id="hud">
   <span class="key">WASD</span> Sür &middot; 
   <span class="key">Shift</span> Nitro &middot; 
@@ -1478,7 +1518,7 @@
   <div class="garage-panel">
     <div class="garage-title">
       <span>WEYLAND MOTORWORKS &middot; ATÖLYE</span>
-      <span style="font-size:14px;color:#2ecc71"><span id="garage-credits">150.000</span> PTS</span>
+      <span style="font-size:14px;color:#2ecc71;white-space:nowrap"><span id="garage-credits">150.000</span> PTS</span>
     </div>
     <div class="garage-subtitle">Frankenstein'ı özelleştir: boya, jant bıçakları, tamponlar, tepe lambası ve ses ayarları!</div>
 

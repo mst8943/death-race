@@ -377,3 +377,11 @@
 - **Hayalet araç** (`updateGhost`, [Y]): 0.1 sn örneklemeli tur kaydı, en iyi tur `death_race_ghost_v1`'de; yarı saydam araç olarak oynatılır.
 - **Radar**: pit (P), airdrop sandıkları, mayınlar, kelle avı hedefi, hayalet.
 - **Düzeltmeler**: F (odak) ve J (ses menüsü) minigunu da ateşliyordu; E (EMP) basılı tutulunca duman perdesi de bırakıyordu → duman [L]'ye taşındı. Tur zamanlayıcısı sayfa açılınca başlıyordu (ilk tur süresine menü süresi ekleniyordu) → yarış başlayınca başlar. Garaj eleme/saldırganlık kartları `nth-child` yerine id ile seçilir.
+
+## [Design] HUD Yerleşim Düzeni
+- Üst orta bildirim sütunu sabit sırada: mod barı (14) → eleme (58) → boss (92) → kelle avı (140) → banner (198) → nemesis (232) → slipstream (266) → combo (300). Önceden eleme sayacı mod barının, banner boss barının altında kalıyordu.
+- Telsiz kutusu radarın altına taşındı (tur süresini ve radarı kapatıyordu).
+- Tuş listesi varsayılan gizli; sol alttaki "⌨ TUŞLAR [F1]" ya da F1 ile panel olarak açılır (zırh barı ve hız göstergesiyle çakışıyordu). Konum debug satırı yalnızca `?perf` ile görünür.
+- Garaj açıkken (`body.garage-open`) yarış HUD'u gizlenir.
+- Kariyer kartında etap ilerleme noktaları ve etap detayları; garaj seviye etiketleri ilk açılışta da doğru (`SEVİYE n/5`); garaj bakiyesi satır kırmaz.
+- Stil düzeltmeleri `index.html` içindeki "HUD YERLEŞİM DÜZENİ" CSS bloğunda toplu.
