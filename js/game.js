@@ -42,6 +42,11 @@ const slotCaltrop = document.getElementById('slot-caltrop');
 /* ==========================================================
    WEB AUDIO API SYNTHESIZER & ENDÜSTRİYEL MÜZİK MOTORU
    ========================================================== */
+// Number.prototype.toLocaleString her çağrıda yeni bir Intl.NumberFormat kurar (çağrı başına ~0.1-1 ms).
+// Her mermi isabetinde addViewers() bunu çağırıyordu; tek bir önbellekli formatlayıcı kullanılır.
+const TR_NUMBER_FORMAT = new Intl.NumberFormat('tr-TR');
+function fmtTR(n) { return TR_NUMBER_FORMAT.format(n); }
+
 const Snd = {
  ctx: null,
  masterGain: null,
@@ -304,6 +309,11 @@ const Snd = {
    this.startEngineAudio();
    return;
   }
+  // Her karede (165 Hz) 4 AudioParam'a setTargetAtTime eklemek otomasyon zaman çizelgesini şişirir;
+  // 20 Hz güncelleme kulakta farksızdır (zaman sabiti zaten 80 ms).
+  const tNow = performance.now();
+  if (tNow - (this._lastEngineUpdate || 0) < 50) return;
+  this._lastEngineUpdate = tNow;
   const now = this.ctx.currentTime;
   const ratio = Math.min(1.0, Math.max(0, speedKmh / 240));
   const throttleBoost = isThrottle ? 22 : 0;
@@ -1000,6 +1010,9 @@ const Snd = {
    try { this.crowdSource.start(); } catch (e) {}
   }
   if (this.crowdGain) {
+   const tNow = performance.now();
+   if (tNow - (this._lastCrowdUpdate || 0) < 100) return;
+   this._lastCrowdUpdate = tNow;
    const targetGain = Math.min(0.35, (vol * (speed / 30)) * 0.35);
    this.crowdGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.2);
   }
@@ -1053,7 +1066,7 @@ function toggleGarage() {
   updateGarageStatsUI();
   updateCarVisualUpgrades();
 
-  garageCreditsEl.textContent = playerCredits.toLocaleString('tr-TR');
+  garageCreditsEl.textContent = fmtTR(playerCredits);
   showRadioMessage('Weyland Motorworks atölyesine hoş geldin! Frankenstein lifte alındı, modifiye için hazır!', 'case');
  } else {
   // Garajdan Çıkış: Piste geri dön
@@ -1099,22 +1112,22 @@ function upgradeItem(type) {
 
  if (type === 'engine') {
   document.getElementById('lvl-engine').textContent = `SEVİYE ${upgrades.engine}/5`;
-  document.getElementById('cost-engine').textContent = upgrades.engine < 5 ? `${costs.engine[upgrades.engine].toLocaleString('tr-TR')} PTS` : 'MAKSİMUM';
+  document.getElementById('cost-engine').textContent = upgrades.engine < 5 ? `${fmtTR(costs.engine[upgrades.engine])} PTS` : 'MAKSİMUM';
  } else if (type === 'armor') {
   document.getElementById('lvl-armor').textContent = `SEVİYE ${upgrades.armor}/5`;
-  document.getElementById('cost-armor').textContent = upgrades.armor < 5 ? `${costs.armor[upgrades.armor].toLocaleString('tr-TR')} PTS` : 'MAKSİMUM';
+  document.getElementById('cost-armor').textContent = upgrades.armor < 5 ? `${fmtTR(costs.armor[upgrades.armor])} PTS` : 'MAKSİMUM';
   carHealth = Math.min(100 + (upgrades.armor - 1) * 35, carHealth + 35);
   updateArmorVisuals();
  } else if (type === 'gun') {
   document.getElementById('lvl-gun').textContent = `SEVİYE ${upgrades.gun}/5`;
-  document.getElementById('cost-gun').textContent = upgrades.gun < 5 ? `${costs.gun[upgrades.gun].toLocaleString('tr-TR')} PTS` : 'MAKSİMUM';
+  document.getElementById('cost-gun').textContent = upgrades.gun < 5 ? `${fmtTR(costs.gun[upgrades.gun])} PTS` : 'MAKSİMUM';
  } else if (type === 'rocket') {
   document.getElementById('lvl-rocket').textContent = `SEVİYE ${upgrades.rocket}/5`;
-  document.getElementById('cost-rocket').textContent = upgrades.rocket < 5 ? `${costs.rocket[upgrades.rocket].toLocaleString('tr-TR')} PTS` : 'MAKSİMUM';
+  document.getElementById('cost-rocket').textContent = upgrades.rocket < 5 ? `${fmtTR(costs.rocket[upgrades.rocket])} PTS` : 'MAKSİMUM';
  }
 
- garageCreditsEl.textContent = playerCredits.toLocaleString('tr-TR');
- currencyValEl.textContent = playerCredits.toLocaleString('tr-TR');
+ garageCreditsEl.textContent = fmtTR(playerCredits);
+ currencyValEl.textContent = fmtTR(playerCredits);
  showBanner(`YÜKSELTME TAMAMLANDI! (${type.toUpperCase()} LVL ${upgrades[type]})`, 'buff-sword');
  showRadioMessage('Yükseltme uygulandı Frankenstein! Canavar artık daha da ölümcül!');
 }
@@ -1665,6 +1678,7 @@ let insideHangarState = false;
 function createCoveredFactoryHangar() {
  const hangarGroup = new T.Group();
  scene.add(hangarGroup);
+ hangarGroup.userData.staticBatch = true;
 
  const wallMat = new T.MeshStandardMaterial({ color: '#252c37', roughness: 0.85, metalness: 0.3 });
  const concreteMat = new T.MeshStandardMaterial({ color: '#383f4b', roughness: 0.95, metalness: 0.1 });
@@ -1805,6 +1819,7 @@ function createCoveredFactoryHangar() {
 
   const group = new T.Group();
   group.position.copy(cPos);
+  group.userData.dynamic = true; // hidrolik pres: animasyonlu, birleştirilmez
   hangarGroup.add(group);
 
   const hammer = new T.Mesh(new T.BoxGeometry(14.0, 3.2, 4.5), crusherMat);
@@ -1934,8 +1949,10 @@ function updateHangarCrushers(dt) {
 function createContainerYard() {
  const yardGroup = new T.Group();
  scene.add(yardGroup);
+ yardGroup.userData.staticBatch = true;
 
  const containerColors = ['#1b4f72', '#922b21', '#145a32', '#d68910', '#2c3e50'];
+ const containerMats = [];
  const containerGeo20 = new T.BoxGeometry(2.6, 2.6, 6.0);
  const containerGeo40 = new T.BoxGeometry(2.6, 2.6, 12.0);
 
@@ -1952,11 +1969,12 @@ function createContainerYard() {
 
    for (let h = 0; h < stackHeight; h++) {
     const colIdx = (idx * 3 + side + h) % containerColors.length;
-    const cMat = new T.MeshStandardMaterial({
+    // Renk başına tek materyal (önceden her konteynere ayrı materyal = ayrı program durumu/draw call)
+    const cMat = containerMats[colIdx] || (containerMats[colIdx] = new T.MeshStandardMaterial({
      color: containerColors[colIdx],
      roughness: 0.65,
      metalness: 0.4
-    });
+    }));
 
     const cMesh = new T.Mesh(geo, cMat);
     cMesh.position.set(sx, 1.3 + h * 2.6, sz + (h % 2) * 0.4);
@@ -2134,6 +2152,7 @@ const GUARD_SEARCHLIGHTS = [];
 function createGrandstandsAndGuards() {
  const standGroup = new T.Group();
  scene.add(standGroup);
+ standGroup.userData.staticBatch = true;
 
  const concreteMat = new T.MeshStandardMaterial({ color: '#252830', roughness: 0.9, metalness: 0.1 });
  const steelMat = new T.MeshStandardMaterial({ color: '#3b404a', roughness: 0.6, metalness: 0.7 });
@@ -2173,10 +2192,12 @@ function createGrandstandsAndGuards() {
 
   const armL = new T.Mesh(new T.BoxGeometry(0.12, 0.55, 0.12), orangeUniformMat);
   armL.position.set(-0.32, 1.1, 0);
+  armL.userData.dynamic = true;
   inmateGroup.add(armL);
 
   const armR = new T.Mesh(new T.BoxGeometry(0.12, 0.55, 0.12), orangeUniformMat);
   armR.position.set(0.32, 1.1, 0);
+  armR.userData.dynamic = true;
   inmateGroup.add(armR);
 
   CROWD_INMATES.push({
@@ -2227,6 +2248,19 @@ function updateCrowdAndGuards(dt) {
   const wave = Math.sin(time * inmate.speed + inmate.phase);
   inmate.armL.rotation.x = wave * 0.8;
   inmate.armR.rotation.x = -wave * 0.8;
+ }
+ if (crowdArmsIM) {
+  // 80 ayrı kol mesh'i yerine tek InstancedMesh: kolların dünya matrisleri buraya yazılır
+  for (let i = 0; i < CROWD_INMATES.length; i++) {
+   const inmate = CROWD_INMATES[i];
+   for (let k = 0; k < 2; k++) {
+    const arm = k === 0 ? inmate.armL : inmate.armR;
+    arm.updateMatrix();
+    arm.matrixWorld.multiplyMatrices(arm.parent.matrixWorld, arm.matrix);
+    crowdArmsIM.setMatrixAt(i * 2 + k, arm.matrixWorld);
+   }
+  }
+  crowdArmsIM.instanceMatrix.needsUpdate = true;
  }
 
  for (let sl of GUARD_SEARCHLIGHTS) {
@@ -2282,8 +2316,16 @@ if ('speechSynthesis' in window) {
  window.speechSynthesis.addEventListener?.('voiceschanged', () => { cachedVoices = null; });
 }
 
+let lastSpeechTime = 0;
+const SPEECH_COOLDOWN_MS = 4000;
 function speakVoice(text, speaker = 'case') {
  if (!('speechSynthesis' in window)) return;
+ // Telsiz mesajları sıralama değişimi, hasar, hangar girişi vb. ile birkaç saniyede bir tetikleniyordu;
+ // her biri speechSynthesis.cancel()+speak() demekti. Sesli okuma 4 sn'de en fazla bir kez yapılır,
+ // aradaki mesajlar yalnızca yazı olarak gösterilir.
+ const tNow = performance.now();
+ if (tNow - lastSpeechTime < SPEECH_COOLDOWN_MS) return;
+ lastSpeechTime = tNow;
  // Sadece en son istenen satır okunur; aynı karede gelen 2-3 telsiz mesajı tek bir konuşmaya iner.
  pendingSpeech = { text, speaker };
  if (speechTimer) return;
@@ -2506,8 +2548,8 @@ let playerRank = 1;
 function addViewers(amount, reason = '') {
  targetViewers += amount;
  playerCredits += Math.round(amount * 0.15); // Her izleyici artışında puan kazanılır!
- if (currencyValEl) currencyValEl.textContent = playerCredits.toLocaleString('tr-TR');
- if (reason) showBanner(`+${amount.toLocaleString('tr-TR')} İZLEYİCİ: ${reason}`, 'buff-sword');
+ if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
+ if (reason) showBanner(`+${fmtTR(amount)} İZLEYİCİ: ${reason}`, 'buff-sword');
 }
 
 /* ==========================================================
@@ -2954,6 +2996,7 @@ const garageShowroomGroup = new T.Group();
 garageShowroomGroup.position.set(0, -350, 0);
 garageShowroomGroup.visible = false;
 scene.add(garageShowroomGroup);
+garageShowroomGroup.userData.staticBatch = true;
 
 // 1. Showroom Parlak Epoksi Zemin (Y=-350)
 const garageFloorGeo = new T.PlaneGeometry(65, 65);
@@ -2995,6 +3038,7 @@ turntableGroup.add(ttHazard);
 const ttUnderglow = new T.PointLight('#ff8800', 3.5, 14);
 ttUnderglow.position.set(0, 0.35, 0);
 turntableGroup.add(ttUnderglow);
+turntableGroup.userData.dynamic = true;
 garageShowroomGroup.add(turntableGroup);
 
 // 3. Ağır Sanayi 4-Direkli Hidrolik Araç Lifti (4-Post Hydraulic Car Lift)
@@ -4350,7 +4394,7 @@ function triggerTakedown(victimAI) {
  Snd.playTakedownSting();
  addViewers(2000000, '★ BURNOUT TAKEDOWN: ' + victimAI.name + ' ★');
  playerCredits += 65000;
- if (currencyValEl) currencyValEl.textContent = playerCredits.toLocaleString('tr-TR');
+ if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
  showBanner('☠ BURNOUT TAKEDOWN! ' + victimAI.name + ' PARÇALANDI!', 'buff-sword');
 
  const lastWords = {
@@ -4771,6 +4815,7 @@ function createPhysicalRamp(width, length, height, pos, rotY = 0, name = 'ramp')
  rampGroup.add(rLight);
 
  scene.add(rampGroup);
+ rampGroup.userData.staticBatch = true;
  activeTrackRamps.push({ body: rampBody, group: rampGroup, name, pos });
  return { body: rampBody, group: rampGroup };
 }
@@ -5440,7 +5485,7 @@ function updateAirdrops(dt) {
    nitroAmount = 100;
    overdriveTimer = 10.0;
    playerCredits += 75000;
-   if (currencyValEl) currencyValEl.textContent = playerCredits.toLocaleString('tr-TR');
+   if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
 
    Snd.playPowerup('shield');
    createExplosion(pPos, 8, 2000);
@@ -5472,7 +5517,7 @@ function updateCombosAndNearMiss(dt) {
     if (dist > 2.6 && dist < 4.2) {
      lastNearMissTime = now; raceStats.nearMisses++;
      playerCredits += 12000;
-     if (currencyValEl) currencyValEl.textContent = playerCredits.toLocaleString('tr-TR');
+     if (currencyValEl) currencyValEl.textContent = fmtTR(playerCredits);
      addViewers(300000, 'KIL PAYI GEÇİŞ!');
      showBanner('⚡ KIL PAYI GEÇİŞ (NEAR MISS)! +12.000 PTS', 'buff-sword');
      Snd.playImpact();
@@ -5951,8 +5996,8 @@ function showPostRaceStats(isEscape = false) {
  document.getElementById('stat-max-speed').textContent = Math.round(raceStats.maxSpeed) + ' km/s';
  document.getElementById('stat-nearmiss').textContent = raceStats.nearMisses;
  document.getElementById('stat-drift').textContent = Math.round(raceStats.driftScore) + ' PTS';
- document.getElementById('stat-credits').textContent = playerCredits.toLocaleString('tr-TR') + ' PTS';
- document.getElementById('stat-viewers').textContent = currentViewers.toLocaleString('tr-TR');
+ document.getElementById('stat-credits').textContent = fmtTR(playerCredits) + ' PTS';
+ document.getElementById('stat-viewers').textContent = fmtTR(currentViewers);
 
  const titleEl = document.getElementById('post-race-mvp-title');
  if (titleEl) {
@@ -6115,6 +6160,7 @@ const pitLight = new T.PointLight('#2ecc71', 2.5, 30);
 pitLight.position.set(215.0, 5.0, 160.0);
 pitBayGroup.add(pitLight);
 scene.add(pitBayGroup);
+pitBayGroup.userData.staticBatch = true;
 
 // 2. DOĞU KALESİ GİRİŞ TAKI & OKYANUS KARGO GEMİSİ (AÇIK PİST GEÇİŞİ)
 const fortressGateGroup = new T.Group();
@@ -6156,6 +6202,7 @@ shipDeck.position.set(0, 7.2, 0); cargoShipGroup.add(shipDeck);
 fortressGateGroup.add(cargoShipGroup);
 
 scene.add(fortressGateGroup);
+fortressGateGroup.userData.staticBatch = true;
 
 // Sütunlar için yan fizik gövdeleri (Yolun tamamen dışarısında, X=±16m)
 const gatePillarBodyL = new CANNON.Body({ mass: 0, material: groundMat });
@@ -6299,7 +6346,7 @@ function updateRatingsAndRanks(dt) {
 
  targetViewers += (Math.random() - 0.49) * 1200 * 0.2;
  currentViewers = Math.round(currentViewers + (targetViewers - currentViewers) * 0.08);
- if (viewersValEl) viewersValEl.textContent = currentViewers.toLocaleString('tr-TR');
+ if (viewersValEl) viewersValEl.textContent = fmtTR(currentViewers);
 
  const playerProgress = getTrackDistance(chassisBody.position, lastPlayerTrackIndex);
  lastPlayerTrackIndex = playerProgress.index;
@@ -6353,6 +6400,140 @@ function updateRatingsAndRanks(dt) {
  if (slotRPG) slotRPG.className = 'wep-slot ' + (now - lastRPGTime >= 4500 ? 'ready' : 'cooling');
  if (slotOil) slotOil.className = 'wep-slot ' + (now - lastOilTime >= 5000 ? 'ready' : 'cooling');
  if (slotCaltrop) slotCaltrop.className = 'wep-slot ' + (now - lastCaltropTime >= 5000 ? 'ready' : 'cooling');
+}
+
+/* ==========================================================
+   STATİK GEOMETRİ BİRLEŞTİRME (STATIC BATCHING)
+   ==========================================================
+   Hangar, konteyner sahası, tribün, rampalar, pit, kale kapısı ve garaj hiç hareket etmeyen yüzlerce
+   ayrı mesh'ten oluşuyordu (kare başına ~900 draw call: 613 ana + 280 gölge geçişi). Burada her
+   staticBatch grubunun yaprak mesh'leri materyal + gölge bayrakları + 160 m'lik bölge hücresi bazında
+   tek BufferGeometry'de birleştirilir. Bölge hücresi frustum culling'in çalışmaya devam etmesini sağlar.
+   userData.dynamic işaretli alt ağaçlar (presler, seyirci kolları, döner tabla) dokunulmadan kalır. */
+const STATIC_BATCH_CELL = 160;
+// Aynı görünen fakat ayrı ayrı `new MeshStandardMaterial(...)` ile oluşturulmuş materyaller aynı
+// anahtarı alır, böylece birlikte birleştirilebilirler (birleşik mesh ilk materyali kullanır).
+function staticMaterialKey(mat) {
+ const c = mat.color ? mat.color.getHexString() : '';
+ const e = mat.emissive ? mat.emissive.getHexString() + ':' + mat.emissiveIntensity : '';
+ return [mat.type, c, e, mat.roughness, mat.metalness, mat.side, mat.wireframe, mat.flatShading,
+  mat.vertexColors, mat.opacity, mat.fog, mat.depthWrite, mat.map ? mat.map.uuid : '',
+  mat.emissiveMap ? mat.emissiveMap.uuid : '', mat.normalMap ? mat.normalMap.uuid : ''].join('/');
+}
+function bakeStaticGroup(root) {
+ root.updateMatrixWorld(true);
+ const invRoot = new T.Matrix4().copy(root.matrixWorld).invert();
+ const buckets = new Map();
+ const wp = new T.Vector3();
+
+ const walk = (o, parentVisible) => {
+  if (o !== root && o.userData.dynamic) return;
+  const vis = o === root ? true : (parentVisible && o.visible);
+  if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && vis && o.children.length === 0 &&
+      !Array.isArray(o.material) && !o.material.transparent &&
+      o.geometry.attributes.position && !o.geometry.attributes.position.isInterleavedBufferAttribute &&
+      o.matrixWorld.determinant() > 0) {
+   const g = o.geometry;
+   const sig = Object.keys(g.attributes).sort().join(',') + (g.index ? '|i' : '|n');
+   o.getWorldPosition(wp);
+   const cell = Math.floor(wp.x / STATIC_BATCH_CELL) + ',' + Math.floor(wp.z / STATIC_BATCH_CELL);
+   const key = staticMaterialKey(o.material) + '|' + o.castShadow + o.receiveShadow + '|' + sig + '|' + cell;
+   let b = buckets.get(key);
+   if (!b) buckets.set(key, b = []);
+   b.push(o);
+  }
+  for (const c of o.children.slice()) walk(c, vis);
+ };
+ walk(root, true);
+
+ const m = new T.Matrix4();
+ const nm = new T.Matrix3();
+ const v = new T.Vector3();
+ let removed = 0, added = 0;
+ for (const list of buckets.values()) {
+  if (list.length < 2) continue;
+  const first = list[0].geometry;
+  const names = Object.keys(first.attributes);
+  let vCount = 0, iCount = 0;
+  for (const mesh of list) {
+   vCount += mesh.geometry.attributes.position.count;
+   iCount += mesh.geometry.index ? mesh.geometry.index.count : mesh.geometry.attributes.position.count;
+  }
+  const arrays = {};
+  for (const n of names) arrays[n] = new Float32Array(vCount * first.attributes[n].itemSize);
+  const index = vCount > 65535 ? new Uint32Array(iCount) : new Uint16Array(iCount);
+
+  let vOff = 0, iOff = 0;
+  for (const mesh of list) {
+   const g = mesh.geometry;
+   m.multiplyMatrices(invRoot, mesh.matrixWorld);
+   nm.getNormalMatrix(m);
+   const cnt = g.attributes.position.count;
+   for (const n of names) {
+    const src = g.attributes[n];
+    const size = src.itemSize;
+    const dst = arrays[n];
+    for (let i = 0; i < cnt; i++) {
+     if (n === 'position') {
+      v.fromBufferAttribute(src, i).applyMatrix4(m);
+      dst[(vOff + i) * 3] = v.x; dst[(vOff + i) * 3 + 1] = v.y; dst[(vOff + i) * 3 + 2] = v.z;
+     } else if (n === 'normal') {
+      v.fromBufferAttribute(src, i).applyMatrix3(nm).normalize();
+      dst[(vOff + i) * 3] = v.x; dst[(vOff + i) * 3 + 1] = v.y; dst[(vOff + i) * 3 + 2] = v.z;
+     } else {
+      for (let c = 0; c < size; c++) dst[(vOff + i) * size + c] = src.array[i * size + c];
+     }
+    }
+   }
+   if (g.index) {
+    for (let i = 0; i < g.index.count; i++) index[iOff + i] = g.index.getX(i) + vOff;
+    iOff += g.index.count;
+   } else {
+    for (let i = 0; i < cnt; i++) index[iOff + i] = vOff + i;
+    iOff += cnt;
+   }
+   vOff += cnt;
+  }
+
+  const merged = new T.BufferGeometry();
+  for (const n of names) merged.setAttribute(n, new T.BufferAttribute(arrays[n], first.attributes[n].itemSize));
+  merged.setIndex(new T.BufferAttribute(index, 1));
+  merged.computeBoundingSphere();
+  merged.computeBoundingBox();
+
+  const bm = new T.Mesh(merged, list[0].material);
+  bm.castShadow = list[0].castShadow;
+  bm.receiveShadow = list[0].receiveShadow;
+  bm.matrixAutoUpdate = false;
+  bm.updateMatrix();
+  root.add(bm);
+  for (const mesh of list) mesh.parent.remove(mesh);
+  removed += list.length; added++;
+ }
+ return { removed, added };
+}
+
+{
+ const batchStats = { removed: 0, added: 0 };
+ for (const child of scene.children.slice()) {
+  if (!child.userData.staticBatch) continue;
+  const r = bakeStaticGroup(child);
+  batchStats.removed += r.removed; batchStats.added += r.added;
+ }
+ window.__staticBatchStats = batchStats;
+}
+
+// Seyirci kolları: animasyonlu 80 mesh tek bir InstancedMesh ile çizilir (asıl kol objeleri sadece
+// transform hesabı için hiyerarşide görünmez olarak kalır).
+let crowdArmsIM = null;
+if (CROWD_INMATES.length > 0) {
+ const a0 = CROWD_INMATES[0].armL;
+ crowdArmsIM = new T.InstancedMesh(a0.geometry, a0.material, CROWD_INMATES.length * 2);
+ crowdArmsIM.frustumCulled = false;
+ for (const inmate of CROWD_INMATES) { inmate.armL.visible = false; inmate.armR.visible = false; }
+ scene.add(crowdArmsIM);
+ scene.updateMatrixWorld(true);
+ updateCrowdAndGuards(0);
 }
 
 /* ==========================================================
@@ -7249,6 +7430,59 @@ function loop(now) {
    renderPipView();
   }
  }
+}
+
+/* ==========================================================
+   PERFORMANS TEŞHİS PANELİ (?perf)
+   ==========================================================
+   index.html?perf ile açıldığında sol üstte FPS, kare süresi ve son donmalar gösterilir.
+   Her 50 ms üstü kare için: rAF aralığı, JS süresi, fizik, render ve o karede olan olaylar
+   (telsiz/TTS, patlama, takedown) kaydedilir. window.__perfLog konsoldan da okunabilir.
+   Eğer "aralık" büyük ama "JS" küçükse donma GPU sürücüsü / GC / tarayıcı kaynaklıdır. */
+if (/[?&]perf\b/.test(location.search)) {
+ const perfEl = document.createElement('div');
+ perfEl.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;background:rgba(0,0,0,.78);color:#0f0;font:11px/1.35 monospace;padding:6px 8px;border-radius:4px;pointer-events:none;white-space:pre;max-width:46vw';
+ document.body.appendChild(perfEl);
+ window.__perfLog = [];
+ let cur = null, lastStamp = performance.now(), frames = 0, fpsT = performance.now(), fps = 0, worst = 0;
+ const timeIt = (obj, key, label) => {
+  const f = obj[key].bind(obj);
+  obj[key] = function (...a) { const t = performance.now(); const r = f(...a); if (cur) cur[label] = (cur[label] || 0) + performance.now() - t; return r; };
+ };
+ timeIt(world, 'step', 'fizik');
+ timeIt(renderer, 'render', 'render');
+ const tagIt = (name, label) => {
+  const f = eval(name);
+  eval(name + ' = function (...a) { if (cur) cur.olay = (cur.olay ? cur.olay + "," : "") + label; return f.apply(this, a); }');
+ };
+ tagIt('showRadioMessage', 'telsiz');
+ tagIt('createExplosion', 'patlama');
+ tagIt('triggerTakedown', 'takedown');
+ tagIt('deployStickyMine', 'mayin');
+ tagIt('spawnAirdropCrate', 'airdrop');
+ const innerLoop = loop;
+ loop = function (now) {
+  const gap = now - lastStamp; lastStamp = now;
+  cur = {};
+  const t0 = performance.now();
+  innerLoop(now);
+  const js = performance.now() - t0;
+  frames++;
+  if (gap > 50 && isGameStarted) {
+   const e = { t: (now / 1000).toFixed(1) + 's', aralik: gap.toFixed(0), js: js.toFixed(1), fizik: (cur.fizik || 0).toFixed(1), render: (cur.render || 0).toFixed(1), olay: cur.olay || '-' };
+   window.__perfLog.push(e);
+   if (window.__perfLog.length > 12) window.__perfLog.shift();
+  }
+  worst = Math.max(worst, gap);
+  if (now - fpsT > 1000) {
+   fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now;
+   perfEl.textContent = `FPS ${fps}  en kötü kare ${worst.toFixed(0)} ms  draw ${renderer.info.render.calls}\n` +
+    'DONMALAR (>50ms): zaman | aralık | JS | fizik | render | olay\n' +
+    window.__perfLog.map(x => `${x.t} | ${x.aralik} | ${x.js} | ${x.fizik} | ${x.render} | ${x.olay}`).join('\n');
+   worst = 0;
+  }
+  cur = null;
+ };
 }
 requestAnimationFrame(loop);
 

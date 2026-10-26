@@ -346,3 +346,13 @@
   6. **Havuzlama:** Mermi, duman, drift dumanı (`createMeshPool`), patlama (8'lik materyal havuzu), kıvılcım (typed-array halka tamponu). Mermi/roket raycast'leri scratch nesne kullanır.
   7. **Fizik:** 800 bariyer gövdesi → 80 bileşik gövde (10 segment/gövde, ortak `CANNON.Box`).
   8. **DOM:** buff kutusu, ısı barı, pit HUD, tur süresi, eleme sayacı ve rakip HP barları dirty-check ile yazılır; eleme sayacının kopuk DOM referansı düzeltildi. `#cv` CSS boyutu (DPR>1 taşması) düzeltildi.
+
+## [Fix] Periyodik Donma Takibi: Statik Batching, TTS Limiti, ?perf Paneli
+- Kullanıcı: "İlk açınca birkaç saniye takılıyor, sonra akıcı, birkaç saniye sonra donuyor, sonra yine akıcı..."
+- Ölçüm: render kapalıyken JS döngüsü ~2 ms/kare; headless GC duraklamaları kısa (orijinal max 31 ms, bu dal max 11 ms). Kalan maliyet: kare başına ~900 draw call (613 ana + 280 gölge).
+- Değişiklikler:
+  1. **Statik Batching (`bakeStaticGroup`)**: `userData.staticBatch` grupları (hangar, konteyner sahası, tribün, rampalar, pit, kale kapısı, garaj) materyal imzası + gölge bayrakları + 160 m hücre bazında birleştirilir (335 mesh → 65). `userData.dynamic` alt ağaçlar (presler, seyirci kolları, döner tabla) hariç. Konteyner materyalleri renk başına paylaşılır.
+  2. **Seyirci kolları** tek `InstancedMesh` (`crowdArmsIM`).
+  3. **`fmtTR`**: `toLocaleString('tr-TR')` yerine önbellekli `Intl.NumberFormat` (her mermi isabetinde çağrılıyordu).
+  4. **TTS**: Sesli telsiz 4 sn'de en fazla bir kez (`SPEECH_COOLDOWN_MS`); motor/kalabalık AudioParam güncellemeleri 20/10 Hz.
+  5. **`?perf` paneli**: FPS, en kötü kare, >50 ms donmaların dökümü (aralık / JS / fizik / render / olay). `window.__perfLog`.
