@@ -5057,54 +5057,130 @@ function updatePlayerHazards(dt) {
 }
 
 /* ---------- Özel araç modeli denemesi (?car=<ad>) ----------
-   araclar/<ad>.glb dosyasını oyuncunun aracı olarak takar (rakipler varsayılan modelde kalır).
+   Garajdan seçilen / sürüklenen .glb (ya da sunucuyla açılınca ?car=<ad> → araclar/<ad>.glb) oyuncunun aracı olur (rakipler varsayılan modelde kalır).
    Tek parça (sözleşmeye uymayan) modeller için: boyut aracın uzunluğuna ölçeklenir, model zemine oturtulur,
    gövdeye gömülü tekerlekleri olduğu için fizik tekerlekleri gizlenir. Kopabilir parça (part_*) ve
    boya malzemesi (T_Govde) yoksa o özellikler bu araçta devre dışı kalır. */
 const CUSTOM_CAR = (new URLSearchParams(location.search).get('car') || '').replace(/[^a-z0-9_-]/gi, '');
 const CUSTOM_CAR_LENGTH = 4.3;       // varsayılan aracın boyu (m)
 const CHASSIS_GROUND_LOCAL_Y = -0.77; // fizik gövdesine göre zemin yüksekliği (dinlenme hâli)
-function loadCustomPlayerCar() {
- if (!CUSTOM_CAR) return;
- new T.GLTFLoader().load(`araclar/${CUSTOM_CAR}.glb`, gltf => {
-  const model = gltf.scene;
-  let hasParts = false, hasPaint = false;
-  model.traverse(o => {
-   if (o.name && o.name.startsWith('part_')) hasParts = true;
-   if (!o.isMesh) return;
-   if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
-   if (o.material && o.material.name === PAINT_MAT) hasPaint = true;
-   o.castShadow = true; o.receiveShadow = true;
-  });
-  // Ölçek ve yerleşim: en uzun eksen Z (ileri) kabul edilir
-  const box = new T.Box3().setFromObject(model);
-  const size = box.getSize(new T.Vector3());
-  const scale = CUSTOM_CAR_LENGTH / size.z;
-  model.scale.setScalar(scale);
-  const center = box.getCenter(new T.Vector3());
-  model.position.set(-center.x * scale, CHASSIS_GROUND_LOCAL_Y - box.min.y * scale, -center.z * scale);
-  const wrapper = new T.Group();
-  wrapper.name = 'custom_car';
-  wrapper.add(model);
-  if (carBodyMesh) carGroup.remove(carBodyMesh);
-  carBodyMesh = wrapper;
-  carGroup.add(wrapper);
-  // Tek parça modellerde tekerlekler gövdeye gömülü: fiziğin ayrı tekerleklerini gizle
-  for (const w of wheelMeshes) w.visible = false;
-  // Roket kovanını modelin tavanına oturt (yukarıdan aşağı ışın)
-  wrapper.updateMatrixWorld(true);
-  const podLocal = rocketPod.position.clone();
-  const ray = new T.Raycaster(carGroup.localToWorld(new T.Vector3(podLocal.x, 5, podLocal.z)), new T.Vector3(0, -1, 0).applyQuaternion(carGroup.quaternion));
-  const hit = ray.intersectObject(wrapper, true)[0];
-  if (hit) rocketPod.position.y = carGroup.worldToLocal(hit.point.clone()).y + 0.11; // kovan kutusunun yarı yüksekliği
-  try { renderer.compileAsync(scene, camera); } catch (e) {}
-  console.info(`[özel araç] ${CUSTOM_CAR}: ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)} → x${scale.toFixed(2)}, parçalar: ${hasParts ? 'var' : 'yok'}, boya: ${hasPaint ? 'var' : 'yok'}`);
-  showBanner(`🚗 DENEME ARACI: ${CUSTOM_CAR.toUpperCase()}${hasParts ? '' : ' · PARÇA KOPMASI KAPALI'}`, 'buff-shield');
- }, undefined, err => {
-  console.warn('[özel araç] yüklenemedi:', err);
-  showBanner(`⚠ ARAÇ YÜKLENEMEDİ: araclar/${CUSTOM_CAR}.glb`, 'buff-sword');
+const CUSTOM_CAR_DB = 'death_race_cars';
+let defaultBodyMesh = null, defaultPodY = null;
+
+// Seçilen GLB dosyası IndexedDB'de saklanır (sayfa yenilenince araç kalsın; dosya localStorage'a sığmaz)
+function customCarDB(mode, fn) {
+ return new Promise(resolve => {
+  try {
+   const req = indexedDB.open(CUSTOM_CAR_DB, 1);
+   req.onupgradeneeded = () => req.result.createObjectStore('glb');
+   req.onsuccess = () => {
+    const tx = req.result.transaction('glb', mode);
+    const r = fn(tx.objectStore('glb'));
+    tx.oncomplete = () => resolve(r && r.result);
+    tx.onerror = () => resolve(null);
+   };
+   req.onerror = () => resolve(null);
+  } catch (e) { resolve(null); }
  });
 }
+
+function updateCustomCarUI(name) {
+ const el = document.getElementById('custom-car-status');
+ if (el) el.textContent = name ? `Takılı: ${name}` : 'Takılı: varsayılan araç';
+ const def = document.getElementById('carfile-default');
+ if (def) def.classList.toggle('active', !name);
+}
+
+function applyCustomCarModel(model, name) {
+ let hasParts = false, hasPaint = false;
+ model.traverse(o => {
+  if (o.name && o.name.startsWith('part_')) hasParts = true;
+  if (!o.isMesh) return;
+  if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+  if (o.material && o.material.name === PAINT_MAT) hasPaint = true;
+  o.castShadow = true; o.receiveShadow = true;
+ });
+ // Ölçek ve yerleşim: Z ileri kabul edilir, araç boyu varsayılan araca eşitlenir
+ const box = new T.Box3().setFromObject(model);
+ const size = box.getSize(new T.Vector3());
+ const scale = CUSTOM_CAR_LENGTH / size.z;
+ model.scale.setScalar(scale);
+ const center = box.getCenter(new T.Vector3());
+ model.position.set(-center.x * scale, CHASSIS_GROUND_LOCAL_Y - box.min.y * scale, -center.z * scale);
+ const wrapper = new T.Group();
+ wrapper.name = 'custom_car';
+ wrapper.add(model);
+ if (defaultBodyMesh === null) { defaultBodyMesh = carBodyMesh; defaultPodY = rocketPod.position.y; }
+ if (carBodyMesh) carGroup.remove(carBodyMesh);
+ carBodyMesh = wrapper;
+ carGroup.add(wrapper);
+ // Tek parça modellerde tekerlekler gövdeye gömülü: fiziğin ayrı tekerleklerini gizle
+ for (const w of wheelMeshes) w.visible = false;
+ // Roket kovanını modelin tavanına oturt (yukarıdan aşağı ışın)
+ carGroup.updateMatrixWorld(true);
+ const podLocal = rocketPod.position;
+ const ray = new T.Raycaster(carGroup.localToWorld(new T.Vector3(podLocal.x, 5, podLocal.z)), new T.Vector3(0, -1, 0).applyQuaternion(carGroup.quaternion));
+ const hit = ray.intersectObject(wrapper, true)[0];
+ rocketPod.position.y = hit ? carGroup.worldToLocal(hit.point.clone()).y + 0.11 : defaultPodY; // 0.11: kovan kutusunun yarı yüksekliği
+ try { renderer.compileAsync(scene, camera); } catch (e) {}
+ console.info(`[özel araç] ${name}: ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)} → x${scale.toFixed(2)}, parçalar: ${hasParts ? 'var' : 'yok'}, boya: ${hasPaint ? 'var' : 'yok'}`);
+ updateCustomCarUI(name);
+ showBanner(`🚗 DENEME ARACI: ${name.toUpperCase()}${hasParts ? '' : ' · PARÇA KOPMASI KAPALI'}`, 'buff-shield');
+}
+
+function restoreDefaultCar() {
+ customCarDB('readwrite', st => st.delete('car'));
+ if (defaultBodyMesh) {
+  carGroup.remove(carBodyMesh);
+  carBodyMesh = defaultBodyMesh;
+  carGroup.add(carBodyMesh);
+  rocketPod.position.y = defaultPodY;
+  defaultBodyMesh = null;
+  for (const w of wheelMeshes) w.visible = true;
+  showBanner('🚗 VARSAYILAN ARAÇ TAKILDI', 'buff-shield');
+ }
+ updateCustomCarUI(null);
+}
+
+function loadCustomCarBuffer(buf, name, save) {
+ new T.GLTFLoader().parse(buf, '', gltf => {
+  applyCustomCarModel(gltf.scene, name);
+  if (save) customCarDB('readwrite', st => st.put({ name, buf }, 'car'));
+ }, err => {
+  console.warn('[özel araç] okunamadı:', err);
+  showBanner(`⚠ ARAÇ OKUNAMADI: ${name} (geçerli bir .glb değil)`, 'buff-sword');
+ });
+}
+
+function loadCustomCarFile(file) {
+ if (!file) return;
+ if (!/\.glb$/i.test(file.name)) { showBanner('⚠ YALNIZCA .GLB DOSYASI YÜKLENEBİLİR', 'buff-sword'); return; }
+ const name = file.name.replace(/\.glb$/i, '');
+ file.arrayBuffer().then(buf => loadCustomCarBuffer(buf, name, true));
+}
+
+// Model yüklendikten sonra: önce adres parametresi (?car=ad, yalnızca sunucuyla açıldığında çalışır), yoksa kayıtlı dosya
+function loadCustomPlayerCar() {
+ if (CUSTOM_CAR) {
+  fetch(`araclar/${CUSTOM_CAR}.glb`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+   .then(buf => loadCustomCarBuffer(buf, CUSTOM_CAR, false))
+   .catch(err => {
+    console.warn('[özel araç] yüklenemedi:', err);
+    showBanner('⚠ ARAÇ DOSYASI AÇILAMADI · GARAJ > GÖVDE & JANTLAR > ARAÇ DOSYASI SEÇ', 'buff-sword');
+   });
+  return;
+ }
+ customCarDB('readonly', st => st.get('car')).then(rec => { if (rec && rec.buf) loadCustomCarBuffer(rec.buf, rec.name, false); });
+}
+
+// .glb dosyasını oyun penceresine sürükleyip bırakmak da aracı takar
+window.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+window.addEventListener('drop', e => {
+ const f = e.dataTransfer && e.dataTransfer.files[0];
+ if (!f) return;
+ e.preventDefault();
+ loadCustomCarFile(f);
+});
 
 /* ---------- 3D Model Bağlama ---------- */
 loadGLTFModel('car_body').then(model => {

@@ -432,3 +432,4 @@
 ## Deneme aracı (?car=)
 - `loadCustomPlayerCar()` (game.js, "3D Model Bağlama" öncesi): `?car=demo_car` → `araclar/demo_car.glb` oyuncu gövdesi olur. Boy 4.3 m'ye ölçeklenir, alt kenar `CHASSIS_GROUND_LOCAL_Y=-0.77`'ye oturur, fizik tekerlekleri gizlenir, roket kovanı ışınla tavana oturtulur.
 - demo_car: tek mesh, 16k üçgen, dokulu, gömülü tekerlekler (fizik tekerleklerinden biraz büyük ve içeride: ~±1.25 m, r≈0.48). Parça/boya yok. Rakipler ve hayalet eski modelde.
+- Kullanıcı oyunu index.html'e çift tıklayarak (file://) açıyor → fetch/GLTFLoader.load çalışmaz. Bu yüzden: garajda dosya seçici (`#carfile-input`), pencereye sürükle-bırak, seçilen GLB IndexedDB'de (`death_race_cars`/`glb`/`car`) saklanır; `restoreDefaultCar()` geri alır. Yeni dosya yükleme özelliklerinde file:// unutulmamalı.

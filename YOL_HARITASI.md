@@ -61,7 +61,7 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 - [x] Garaj sahnesi zeminin altındaydı (araç gökyüzüne fırlıyordu) → zemin seviyesine taşındı
 - [x] Tampon kitlerinin etkisi yoktu (kimlik uyuşmazlığı) → `BUMPER_FX`
 - [x] Boya ve rakip renkleri uygulanmıyordu → malzeme adına göre boyama
-- [~] Deneme aracı: `index.html?car=<ad>` ile `araclar/<ad>.glb` oyuncu aracı olur (boy 4.3 m'ye ölçeklenir, zemine oturur, roket kovanı tavana yerleşir). Tek parça modelde parça kopması ve boya yok, tekerlekler dönmez.
+- [~] Deneme aracı: Garaj > Gövde & Jantlar > **Araç dosyası seç** (ya da .glb'yi oyun ekranına sürükle) ile oyuncu aracı olur, seçim hatırlanır; "Varsayılan araç" ile geri dönülür. Sunucuyla açılınca `?car=<ad>` da çalışır (boy 4.3 m'ye ölçeklenir, zemine oturur, roket kovanı tavana yerleşir). Tek parça modelde parça kopması ve boya yok, tekerlekler dönmez.
 
 ## 🖥️📱 Platform (Steam + Android APK)
 - [ ] Erken platform denemesi: Electron (masaüstü) ve Capacitor (Android) ile test paketi, orta segment bir telefonda FPS ölçümü

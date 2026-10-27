@@ -1697,6 +1697,21 @@
     <!-- SEKME 2: GÖVDE & JANTLAR -->
     <div class="tab-pane" id="tab-pane-bodykits">
       <div class="custom-section">
+        <div class="custom-title">🚗 DENEME ARACI (.GLB MODEL)</div>
+        <div class="custom-grid">
+          <div class="custom-card" id="carfile-pick" onclick="document.getElementById('carfile-input').click()">
+            <div class="custom-card-title">ARAÇ DOSYASI SEÇ</div>
+            <div class="custom-card-desc">.glb dosyası seç ya da oyun ekranına sürükle</div>
+          </div>
+          <div class="custom-card active" id="carfile-default" onclick="restoreDefaultCar()">
+            <div class="custom-card-title">VARSAYILAN ARAÇ</div>
+            <div class="custom-card-desc">Oyunun kendi modeline dön</div>
+          </div>
+        </div>
+        <div class="custom-card-desc" id="custom-car-status" style="margin-top:6px">Takılı: varsayılan araç</div>
+        <input type="file" id="carfile-input" accept=".glb" style="display:none" onchange="loadCustomCarFile(this.files[0]); this.value=''">
+      </div>
+      <div class="custom-section">
         <div class="custom-title">⚔️ DÖNEN JANT BIÇAKLARI (WHEEL GRINDERS)</div>
         <div class="custom-grid">
           <div class="custom-card active" id="blades-none" onclick="applyWheelBlades('none')">
