@@ -85,6 +85,7 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 - [~] Profil penceresi: profil, istatistik, başarımlar (360 px'de sekme başlıkları sığmıyor — tasarımda)
 
 ## 🚗 4. Araçlar ve silahlar
+- [ ] Çarpışma/sürüş fiziği: abartılı zıplama-takla, havada düzelme, duvara yapışma → Gemini görevi `docs/GEMINI_FIZIK_GOREVI.md`
 - [ ] Birden fazla araç (farklı istatistik; model sonra)
 - [ ] Silah slotu / loadout (yarış öncesi 2 özel silah)
 - [ ] Yeni silahlar: alev püskürtücü, arka pompalı, kilitlenen füze
