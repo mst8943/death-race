@@ -162,3 +162,30 @@ Bölünmüş ekran, anlık tekrar, çevrimiçi skor tablosu.
 - **Araç modeli:**
   - `python tools/arac_kontrol.py araclar/<ad>.glb` ile kontrol.
   - Sonra garaj > Gövde & Jantlar > Araç dosyası seç ile oyunda dene.
+
+---
+
+## 8. Son oturum özeti ve sıradaki adımlar (27 Ekim 2026)
+
+### Bu oturumda yapılanlar
+- Deneme aracı sistemi: garajdan `.glb` seç / sürükle-bırak, IndexedDB'de hatırlanır, "Varsayılan araç" ile geri dönülür (`file://` ile çalışır).
+- `autoSplitCar()`: tek parça araç otomatik bölünür (4 tekerlek, 5 kopabilir parça, boyanabilir `T_Govde`). `demo_car.glb` ile test edildi.
+- Elle bölme kuralları: `docs/ARAC_KURALLARI.md`, kontrol aracı `tools/arac_kontrol.py`.
+- Parça göstergesindeki ters SOL/SAĞ düzeltildi.
+- Gemini görev dosyaları yazıldı (henüz Gemini'ye verilmedi / yamalar gelmedi):
+  - `docs/GEMINI_FIZIK_GOREVI.md`
+  - `docs/GEMINI_HATA_TARAMASI.md`
+
+### Kullanıcının bildirdiği açık sorunlar (henüz kodda DÜZELTİLMEDİ)
+1. Çarpmalar abartılı: bariyer/araca çarpınca çok zıplıyor, takla atıyor; araç ağır hissettirmeli.
+2. `updateRollOverRecovery` havada da düzeltiyor (yer kontrolü yok).
+3. Duvara sürtünüp çıkılamıyor, araç yapışıp kalıyor (gövde–duvar ContactMaterial yok).
+4. Rakipler sıkışınca kendini ışınlıyor (`stuckTimer`, ~4964): kaldırılmalı.
+5. Rampadan uçarken yoldaki çevre engelleri kaldırılmalı.
+6. `timeScale`/`setTimeout` çakışmaları, duraklatmada çalışan zamanlayıcılar.
+
+### Yeni oturumda yapılacaklar (sırayla)
+1. `git pull`; kullanıcı Gemini'ye iki görev dosyasını verip yamaları getirecek. Yamaları incele, uygula, Playwright ile test et (bariyere 120 km/sa çarpma, havada düzelme yok, duvar sürtünmesi, rakip ışınlanması yok).
+2. Yamalar gelmezse sorunları doğrudan kendin çöz (görev dosyalarında koddaki yerler yazılı).
+3. Sonra Tur C: garajda çoklu araç seçimi, araç başına ayar, rakip ve hayalet için araç modeli.
+4. Platform denemesi (Capacitor/Electron), tasarım ve ses geçişi (en son).
