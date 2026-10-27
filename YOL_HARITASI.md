@@ -86,6 +86,7 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 
 ## 🚗 4. Araçlar ve silahlar
 - [ ] Çarpışma/sürüş fiziği: abartılı zıplama-takla, havada düzelme, duvara yapışma → Gemini görevi `docs/GEMINI_FIZIK_GOREVI.md`
+- [ ] Hata taraması: rakiplerin kendini ışınlaması, rampa uçuş yolundaki engeller, timeScale/setTimeout çakışmaları → `docs/GEMINI_HATA_TARAMASI.md`
 - [ ] Birden fazla araç (farklı istatistik; model sonra)
 - [ ] Silah slotu / loadout (yarış öncesi 2 özel silah)
 - [ ] Yeni silahlar: alev püskürtücü, arka pompalı, kilitlenen füze
