@@ -48,7 +48,7 @@
   max-width: 280px;
   box-sizing: border-box;
   background: rgba(13, 17, 24, 0.88);
-  backdrop-filter: blur(8px);
+  /* [İnceleme] backdrop-filter kaldırıldı: WebGL canvas üzerinde her karede pahalı (bkz. memory/death-race.md) */
   border: 1px solid rgba(255, 204, 68, 0.25);
   border-left: 3px solid #ffcc44;
   border-radius: 6px;
@@ -299,8 +299,8 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.82);
-  backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.9);
+  /* [İnceleme] backdrop-filter kaldırıldı: WebGL canvas üzerinde her karede pahalı (bkz. memory/death-race.md) */
   z-index: 600;
   display: flex;
   align-items: center;
@@ -788,3 +788,6 @@
     font-size: 18px;
   }
 }
+
+/* [İnceleme] Sekme değişiminde pencere yeniden çizilirken açılış animasyonu tekrar oynamasın */
+.drp-modal-backdrop.drp-no-anim { animation: none; }

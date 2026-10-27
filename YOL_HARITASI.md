@@ -74,11 +74,11 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 - [ ] Takedown arenası (3 dk, rakipler yeniden doğar)
 - [ ] Günlük meydan okuma (tarihe göre değişen kurallar)
 
-## 🎯 3. Hedefler ve ilerleme (Tur B — Gemini yazıyor: `docs/TUR_B_GEMINI.md`)
-- [ ] Sponsor görevleri (yarış başına 2-3 hedef + bonus)
-- [ ] Başarımlar (kalıcı rozetler)
-- [ ] Seviye / XP sistemi, seviyeyle açılan parçalar
-- [ ] Kariyer istatistikleri ekranı
+## 🎯 3. Hedefler ve ilerleme (Tur B — Gemini yazdı, Claude inceledi)
+- [~] Sponsor görevleri (yarış başına 3 hedef + bonus) — Gemini yazdı, incelendi
+- [~] Başarımlar (18 kalıcı rozet, Steam'e eşlenecek sabit kimlikler)
+- [~] Seviye / XP sistemi, seviyeyle açılan garaj parçaları (kilit rozetleri)
+- [~] Profil penceresi: profil, istatistik, başarımlar (360 px'de sekme başlıkları sığmıyor — tasarımda)
 
 ## 🚗 4. Araçlar ve silahlar
 - [ ] Birden fazla araç (farklı istatistik; model sonra)

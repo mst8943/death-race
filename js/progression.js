@@ -32,6 +32,12 @@
     'oil', 'fire', 'trap', 'crusher', 'airstrike', 'blades'
   ];
 
+  // İstatistik ekranı için Türkçe takedown adları
+  const TAKEDOWN_NAMES = {
+    ram: 'ÇARPIŞMA', wall: 'DUVAR', flip: 'TAKLA', gun: 'MİNİGUN', rocket: 'ROKET', mine: 'MAYIN',
+    oil: 'YAĞ', fire: 'ALEV', trap: 'TUZAK', crusher: 'PRES', airstrike: 'HAVA SALDIRISI', blades: 'JANT BIÇAĞI'
+  };
+
   // Seviye Kilit Tablosu
   const UNLOCKS_BY_LEVEL = {
     2: [
@@ -241,8 +247,8 @@
       if (announceLevelUp) {
         // Seviye ödül kredisi: n * 10.000 PTS
         const awardCredits = state.level * 10000;
-        window.DR.addCredits(awardCredits, `SEVİYE ${state.level} ÖDÜLÜ`);
-        window.DR.showBanner(`⬆ SEVİYE ${state.level}!`, 'good');
+        window.DR.addCredits(awardCredits);
+        window.DR.showBanner(`⬆ SEVİYE ${state.level}! +${window.DR.format(awardCredits)} PTS`, 'good');
 
         // Yeni açılan parçaları telsizden duyur
         const unlocks = UNLOCKS_BY_LEVEL[state.level];
@@ -417,7 +423,7 @@
 
     let itemsHtml = '';
     activeMissions.forEach(m => {
-      const progText = m.completed ? '✓' : `${Math.min(m.current, m.target)}/${m.target}`;
+      const progText = m.completed ? '✓' : `${Math.floor(Math.min(m.current, m.target))}/${m.target}`;
       itemsHtml += `
         <div class="drp-sponsor-item ${m.completed ? 'drp-done' : ''}">
           <div class="drp-sponsor-main">
@@ -446,7 +452,7 @@
       m.completed = true;
       missionsCompletedThisRace.push(m);
       window.DR.showBanner(`📺 SPONSOR GÖREVİ: ${m.name} ✓ +${window.DR.format(m.credits)} PTS`, 'good');
-      window.DR.addCredits(m.credits, `SPONSOR: ${m.name}`);
+      window.DR.addCredits(m.credits); // [İnceleme düzeltmesi] ayrıca ikinci bir duyuru göstermesin
       addXp(m.xp, true);
       renderSponsorHud();
     }
@@ -458,6 +464,9 @@
   // --------------------------------------------------------------------------
 
   let recentAchievementsThisRace = [];
+  // [İnceleme düzeltmesi] Barışçıl test modunda kimse ateş etmez ve hasar kapalıdır; orada kazanılan
+  // birincilik, "KUSURSUZ" başarımı, takedown sayaçları ve XP önceden sayılıyordu (kolay istismar).
+  let raceCounts = false;
 
   function unlockAchievement(id) {
     const ach = state.achievements[id];
@@ -600,23 +609,29 @@
   function openProfileModal() {
     isProfileOpen = true;
     renderProfileModal();
-    window.addEventListener('keydown', handleProfileKeyDown);
+    // [İnceleme düzeltmesi] Yakalama aşamasında dinlenir ve olay durdurulur: önceden Esc profil ile birlikte
+    // arkadaki duraklatma menüsünü de kapatıp oyunu devam ettiriyordu; ok/Enter tuşları da menüye gidiyordu.
+    window.addEventListener('keydown', handleProfileKeyDown, true);
   }
 
   function closeProfileModal() {
     isProfileOpen = false;
     const root = document.getElementById('profile-root');
     if (root) root.innerHTML = '';
-    window.removeEventListener('keydown', handleProfileKeyDown);
+    window.removeEventListener('keydown', handleProfileKeyDown, true);
   }
 
   function handleProfileKeyDown(e) {
+    if (!isProfileOpen) return;
+    if (e.key === 'Tab') return; // odak gezinmesi tarayıcıda kalsın
+    e.stopImmediatePropagation();
     if (e.key === 'Escape') {
+      e.preventDefault();
       closeProfileModal();
     }
   }
 
-  function renderProfileModal() {
+  function renderProfileModal(animate = true) {
     const root = document.getElementById('profile-root');
     if (!root || !isProfileOpen) return;
 
@@ -641,7 +656,7 @@
     ALL_TAKEDOWN_TYPES.forEach(t => {
       tdTypesHtml += `
         <div class="drp-td-chip">
-          <span class="drp-td-type">${t}</span>
+          <span class="drp-td-type">${TAKEDOWN_NAMES[t] || t}</span>
           <span class="drp-td-count">${st.takedownTypes[t] || 0}</span>
         </div>`;
     });
@@ -687,7 +702,7 @@
     });
 
     root.innerHTML = `
-      <div class="drp-modal-backdrop" id="drp-backdrop">
+      <div class="drp-modal-backdrop${animate ? '' : ' drp-no-anim'}" id="drp-backdrop">
         <div class="drp-modal-dialog" role="dialog" aria-modal="true">
           <div class="drp-modal-header">
             <h2 class="drp-modal-title">🏆 PİLOT PROFİLİ & BAŞARIMLAR</h2>
@@ -785,7 +800,8 @@
     tabBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         activeTab = btn.getAttribute('data-tab');
-        renderProfileModal();
+        renderProfileModal(false);
+        root.querySelector(`[data-tab="${activeTab}"]`)?.focus();
       });
     });
   }
@@ -842,6 +858,7 @@
     missionsCompletedThisRace = [];
     recentAchievementsThisRace = [];
 
+    raceCounts = data.mode !== 'peaceful';
     if (data.mode === 'peaceful') {
       activeMissions = [];
     } else {
@@ -853,6 +870,7 @@
 
   // F. Takedown Olayı
   window.DR.on('takedown', (data) => {
+    if (!raceCounts) return;
     state.stats.takedowns++;
     if (data.type && state.stats.takedownTypes[data.type] !== undefined) {
       state.stats.takedownTypes[data.type]++;
@@ -889,12 +907,13 @@
 
   // G. Drift Olayı
   window.DR.on('driftEnd', (data) => {
+    if (!raceCounts) return;
     const sec = Number(data.seconds) || 0;
     state.stats.driftSeconds += sec;
 
     activeMissions.forEach(m => {
       if (!m.completed && m.id === 'drift_10') {
-        m.current += Math.round(sec);
+        m.current += sec; // [İnceleme düzeltmesi] yuvarlama kısa driftleri fazla sayıyordu
         checkCompleteMission(m);
       }
     });
@@ -905,6 +924,7 @@
 
   // H. Kıl Payı (Near Miss)
   window.DR.on('nearMiss', () => {
+    if (!raceCounts) return;
     state.stats.nearMisses++;
 
     activeMissions.forEach(m => {
@@ -955,6 +975,7 @@
 
   // M. Tur Tamamlandı
   window.DR.on('lapComplete', (data) => {
+    if (!raceCounts) return;
     if (data.lapMs) {
       if (!state.stats.bestLapMs || data.lapMs < state.stats.bestLapMs) {
         state.stats.bestLapMs = data.lapMs;
@@ -976,6 +997,12 @@
 
   // N. Yarış Sonu ve Kaçış Olayları
   function handleRaceCompletion(isEscape, data) {
+    if (!raceCounts) {
+      const root = document.getElementById('post-race-progress');
+      if (root) root.innerHTML = `<div class="drp-post-race"><div class="drp-pr-title">🕊️ BARIŞÇIL TEST MODU · XP, GÖREV VE BAŞARIM KAZANILMAZ</div></div>`;
+      return;
+    }
+    raceCounts = false; // aynı yarış iki kez sayılmasın (ör. bitişten sonra kaçış)
     state.stats.racesCompleted++;
     const rank = isEscape ? 1 : (Number(data?.rank) || 5);
     const difficulty = data?.difficulty || 'normal';
@@ -1096,6 +1123,11 @@
     console.warn('[DRProgression] KENDİ KENDİNİ TEST ETME BAŞLATILIYOR...');
     const originalBackup = window.DR.storage.get(STORAGE_KEY, null);
     const testResults = [];
+    // [İnceleme düzeltmesi] Test gerçek krediyi ve duyuruları etkilemesin; yarış durumu da geri alınsın
+    const realApi = { addCredits: window.DR.addCredits, showBanner: window.DR.showBanner, showRadio: window.DR.showRadio };
+    const realRace = { activeMissions, raceCounts, recentAchievementsThisRace, missionsCompletedThisRace };
+    window.DR.addCredits = () => {}; window.DR.showBanner = () => {}; window.DR.showRadio = () => {};
+    raceCounts = true;
 
     function record(testName, passed, details) {
       testResults.push({
@@ -1145,11 +1177,13 @@
     } catch (err) {
       console.error('[DRProgression] Test esnasında hata oluştu:', err);
     } finally {
-      // Testten önceki orijinal veriyi geri yükle
-      if (originalBackup) {
-        window.DR.storage.set(STORAGE_KEY, originalBackup);
-        loadState();
-      }
+      // Testten önceki orijinal veriyi geri yükle (önceden kayıt yoksa test verisi kalıcı oluyordu)
+      window.DR.storage.set(STORAGE_KEY, originalBackup);
+      loadState();
+      Object.assign(window.DR, realApi);
+      ({ activeMissions, raceCounts, recentAchievementsThisRace, missionsCompletedThisRace } = realRace);
+      renderSponsorHud();
+      updateGarageBadges();
       console.log('[DRProgression] Orijinal kullanıcı verisi geri yüklendi.');
     }
   }
