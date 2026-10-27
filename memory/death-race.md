@@ -428,3 +428,7 @@
 - `js/progression.js` + `css/progression.css` (Gemini, yalnızca `window.DR` ile bağlı). Sponsor görevleri (yarış başına 3), XP/seviye (1–30), seviye kilitleri (`DR.lockProvider` + garaj rozetleri), 18 başarım, profil penceresi (3 sekme), yarış sonu özeti. Kayıt: `death_race_ext_progression` (v:1).
 - İnceleme düzeltmeleri: profil açıkken Esc arkadaki duraklatma menüsünü de kapatıyordu (keydown artık yakalama aşamasında + stopImmediatePropagation); barışçıl modda birincilik/KUSURSUZ/XP sayılıyordu (`raceCounts`); görev ve seviye atlamada çift duyuru; drift görevi yuvarlama ile fazla sayıyordu; `?progtest` kayıt yoksa test verisini kalıcı bırakıyor ve gerçek kredi ekliyordu; `backdrop-filter: blur` kaldırıldı (WebGL üzerinde pahalı); sekme değişiminde açılış animasyonu tekrar oynuyordu; istatistikte takedown türleri Türkçe.
 - Tasarım aşaması notu: 360 px'de profil sekme başlıkları sığmıyor.
+
+## Deneme aracı (?car=)
+- `loadCustomPlayerCar()` (game.js, "3D Model Bağlama" öncesi): `?car=demo_car` → `araclar/demo_car.glb` oyuncu gövdesi olur. Boy 4.3 m'ye ölçeklenir, alt kenar `CHASSIS_GROUND_LOCAL_Y=-0.77`'ye oturur, fizik tekerlekleri gizlenir, roket kovanı ışınla tavana oturtulur.
+- demo_car: tek mesh, 16k üçgen, dokulu, gömülü tekerlekler (fizik tekerleklerinden biraz büyük ve içeride: ~±1.25 m, r≈0.48). Parça/boya yok. Rakipler ve hayalet eski modelde.

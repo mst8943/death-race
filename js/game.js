@@ -5056,6 +5056,56 @@ function updatePlayerHazards(dt) {
  }
 }
 
+/* ---------- Özel araç modeli denemesi (?car=<ad>) ----------
+   araclar/<ad>.glb dosyasını oyuncunun aracı olarak takar (rakipler varsayılan modelde kalır).
+   Tek parça (sözleşmeye uymayan) modeller için: boyut aracın uzunluğuna ölçeklenir, model zemine oturtulur,
+   gövdeye gömülü tekerlekleri olduğu için fizik tekerlekleri gizlenir. Kopabilir parça (part_*) ve
+   boya malzemesi (T_Govde) yoksa o özellikler bu araçta devre dışı kalır. */
+const CUSTOM_CAR = (new URLSearchParams(location.search).get('car') || '').replace(/[^a-z0-9_-]/gi, '');
+const CUSTOM_CAR_LENGTH = 4.3;       // varsayılan aracın boyu (m)
+const CHASSIS_GROUND_LOCAL_Y = -0.77; // fizik gövdesine göre zemin yüksekliği (dinlenme hâli)
+function loadCustomPlayerCar() {
+ if (!CUSTOM_CAR) return;
+ new T.GLTFLoader().load(`araclar/${CUSTOM_CAR}.glb`, gltf => {
+  const model = gltf.scene;
+  let hasParts = false, hasPaint = false;
+  model.traverse(o => {
+   if (o.name && o.name.startsWith('part_')) hasParts = true;
+   if (!o.isMesh) return;
+   if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+   if (o.material && o.material.name === PAINT_MAT) hasPaint = true;
+   o.castShadow = true; o.receiveShadow = true;
+  });
+  // Ölçek ve yerleşim: en uzun eksen Z (ileri) kabul edilir
+  const box = new T.Box3().setFromObject(model);
+  const size = box.getSize(new T.Vector3());
+  const scale = CUSTOM_CAR_LENGTH / size.z;
+  model.scale.setScalar(scale);
+  const center = box.getCenter(new T.Vector3());
+  model.position.set(-center.x * scale, CHASSIS_GROUND_LOCAL_Y - box.min.y * scale, -center.z * scale);
+  const wrapper = new T.Group();
+  wrapper.name = 'custom_car';
+  wrapper.add(model);
+  if (carBodyMesh) carGroup.remove(carBodyMesh);
+  carBodyMesh = wrapper;
+  carGroup.add(wrapper);
+  // Tek parça modellerde tekerlekler gövdeye gömülü: fiziğin ayrı tekerleklerini gizle
+  for (const w of wheelMeshes) w.visible = false;
+  // Roket kovanını modelin tavanına oturt (yukarıdan aşağı ışın)
+  wrapper.updateMatrixWorld(true);
+  const podLocal = rocketPod.position.clone();
+  const ray = new T.Raycaster(carGroup.localToWorld(new T.Vector3(podLocal.x, 5, podLocal.z)), new T.Vector3(0, -1, 0).applyQuaternion(carGroup.quaternion));
+  const hit = ray.intersectObject(wrapper, true)[0];
+  if (hit) rocketPod.position.y = carGroup.worldToLocal(hit.point.clone()).y + 0.11; // kovan kutusunun yarı yüksekliği
+  try { renderer.compileAsync(scene, camera); } catch (e) {}
+  console.info(`[özel araç] ${CUSTOM_CAR}: ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)} → x${scale.toFixed(2)}, parçalar: ${hasParts ? 'var' : 'yok'}, boya: ${hasPaint ? 'var' : 'yok'}`);
+  showBanner(`🚗 DENEME ARACI: ${CUSTOM_CAR.toUpperCase()}${hasParts ? '' : ' · PARÇA KOPMASI KAPALI'}`, 'buff-shield');
+ }, undefined, err => {
+  console.warn('[özel araç] yüklenemedi:', err);
+  showBanner(`⚠ ARAÇ YÜKLENEMEDİ: araclar/${CUSTOM_CAR}.glb`, 'buff-sword');
+ });
+}
+
 /* ---------- 3D Model Bağlama ---------- */
 loadGLTFModel('car_body').then(model => {
  model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -5084,6 +5134,7 @@ loadGLTFModel('car_body').then(model => {
  ghostMesh.add(ghostBody);
  ghostMesh.visible = false;
  scene.add(ghostMesh);
+ loadCustomPlayerCar();
  // Kayıttan gelen boya model yüklenince uygulanır (model asenkron yüklendiği için)
  if (currentSkin !== 'classic_black') {
   silentRestore = true;
