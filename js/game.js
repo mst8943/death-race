@@ -1223,6 +1223,13 @@ function paintCarBody(root, colorStyle, metalness = null, roughness = null) {
   if (!o.isMesh || !o.material) return;
   const n = o.material.name;
   if (n !== PAINT_MAT && n !== PAINT_MAT_DARK) return;
+  const ud = o.material.userData;
+  if (ud.grayMap || ud.origMap) {
+   // Otomatik bölünen dokulu araç: varsayılan boyada kendi dokusu, diğer boyalarda dokunun gri kopyası boyanır
+   const original = colorStyle === CAR_SKINS.classic_black.bodyColor;
+   o.material.map = original || !ud.grayMap ? ud.origMap : ud.grayMap;
+   if (original) { o.material.color.copy(ud.origColor); o.material.metalness = 0.25; o.material.roughness = 0.7; return; }
+  }
   o.material.color.setStyle(colorStyle);
   if (n === PAINT_MAT_DARK) o.material.color.multiplyScalar(0.45);
   if (metalness !== null) o.material.metalness = metalness;
@@ -5123,8 +5130,203 @@ function clearCustomCar() {
  if (defaultPodY !== null) rocketPod.position.y = defaultPodY;
 }
 
+/* Otomatik bölme (docs/ARAC_KURALLARI.md, "Tek parça modeller"):
+   Tekerleği ve parçası ayrılmamış modelde üçgenler konumlarına göre sınıflandırılır.
+   - Tekerlekler: zemine değen 4 köşe kümesi lastik temas yüzeyidir; yarıçap, zeminden h yükseklikteki
+     lastik yarı genişliğinden (r = (w² + h²) / 2h) bulunur; merkezi bu silindirin içindeki üçgenler tekerlek olur.
+   - Parçalar: ön, arka, tavan ve iki yan bölgeler kopabilir parça olur.
+   - Boya: gövdede en çok kullanılan malzemenin kopyası T_Govde olur (dokunun gri kopası boyayla renklenir).
+   Dönüş: { root, wheels, parts } ya da bölünemezse null. Konumlar araç ölçeğinde (metre) pişirilir. */
+function autoSplitCar(model) {
+ model.updateMatrixWorld(true);
+ const src = [];
+ model.traverse(o => {
+  if (!o.isMesh || !o.geometry.attributes.position) return;
+  const g = o.geometry.clone();
+  g.applyMatrix4(o.matrixWorld);
+  if (!g.attributes.normal) g.computeVertexNormals();
+  src.push({ g, mat: o.material });
+ });
+ if (!src.length) return null;
+ const box = new T.Box3();
+ for (const { g } of src) { g.computeBoundingBox(); box.union(g.boundingBox); }
+ const lo = box.min, hi = box.max, W = hi.x - lo.x, H = hi.y - lo.y, L = hi.z - lo.z;
+ const cx = (lo.x + hi.x) / 2, cz = (lo.z + hi.z) / 2;
+ const verts = [];
+ for (const { g } of src) { const a = g.attributes.position.array; for (let i = 0; i < a.length; i += 3) verts.push(a[i], a[i + 1], a[i + 2]); }
+ const nV = verts.length / 3;
+ const median = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
+
+ // --- Tekerlekler ---
+ let wheels = [];
+ const quads = [[-1, 1], [1, 1], [-1, -1], [1, -1]];
+ for (const [sx, sz] of quads) {
+  let n = 0, mx = 0, mz = 0, x0 = Infinity, x1 = -Infinity;
+  for (let i = 0; i < nV; i++) {
+   const x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2];
+   if (y > lo.y + 0.03 * H || Math.sign(x - cx) !== sx || Math.sign(z - cz) !== sz) continue;
+   n++; mx += x; mz += z; x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+  }
+  if (n < 3) { wheels = null; break; }
+  wheels.push({ xc: mx / n, zc: mz / n, x0: x0 - 0.01 * W, x1: x1 + 0.01 * W, rs: [] });
+ }
+ let r = NaN;
+ if (wheels) {
+  for (const w of wheels) {
+   const halfW = (w.x1 - w.x0) / 2;
+   for (const f of [0.08, 0.10, 0.12, 0.14]) {
+    const h = f * H, band = [];
+    for (let i = 0; i < nV; i++) {
+     const x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2];
+     if (Math.abs(x - (w.x0 + w.x1) / 2) < halfW && Math.abs(z - w.zc) < 0.12 * L && Math.abs(y - (lo.y + h)) < 0.015 * H) band.push(Math.abs(z - w.zc));
+    }
+    if (band.length < 4) continue;
+    band.sort((a, b) => a - b);
+    const wd = band[Math.floor(band.length * 0.95)];
+    w.rs.push((wd * wd + h * h) / (2 * h));
+   }
+  }
+  // Dört tekerlek aynı boyda kabul edilir; tampon ve mahmuzlar tahmini bozabildiği için ortanca alınır
+  r = median(wheels.flatMap(w => w.rs).filter(v => v < 0.4 * H));
+  if (!(r > 0.04 * L && r < 0.25 * L)) wheels = null;
+ }
+ const zF = wheels ? Math.max(...wheels.map(w => w.zc)) : cz + 0.25 * L;
+ const zR = wheels ? Math.min(...wheels.map(w => w.zc)) : cz - 0.25 * L;
+ const rr = wheels ? r : 0.09 * L;
+
+ // --- Sınıflandırma: önce tekerlekler, sonra parçalar, kalan gövde ---
+ const CATS = ['body', 'wheel_0', 'wheel_1', 'wheel_2', 'wheel_3', 'part_spikes', 'part_tombstone', 'part_roof', 'part_armor_l', 'part_armor_r'];
+ const classify = (x, y, z) => {
+  if (wheels) for (let i = 0; i < 4; i++) {
+   const w = wheels[i], dy = y - (lo.y + r), dz = z - w.zc;
+   if (x >= w.x0 && x <= w.x1 && dy * dy + dz * dz <= (r * 1.03) ** 2) return 1 + i;
+  }
+  if (z > hi.z - 0.09 * L && y > lo.y + 0.15 * H) return 5;                      // ön (+Z) koçbaşı / mahmuz
+  if (z < lo.z + 0.08 * L && y > lo.y + 0.2 * H) return 6;                       // arka kalkan
+  if (y > hi.y - 0.16 * H && Math.abs(z - (zF + zR) / 2) < 0.3 * L) return 7;   // tavan
+  if (z > zR + rr && z < zF - rr && y > lo.y + 0.25 * H && y < lo.y + 0.7 * H) {
+   if (x < lo.x + 0.12 * W) return 8;                                            // −X yanı
+   if (x > hi.x - 0.12 * W) return 9;                                            // +X yanı
+  }
+  return 0;
+ };
+ const buckets = CATS.map(() => []); // her kategori: [{ g, mat, idx: [] }]
+ const matTris = new Map();
+ for (const s of src) {
+  const pos = s.g.attributes.position.array;
+  const idx = s.g.index ? s.g.index.array : null;
+  const nT = (idx ? idx.length : pos.length / 3) / 3;
+  const per = CATS.map(() => []);
+  for (let t = 0; t < nT; t++) {
+   const a = idx ? idx[t * 3] : t * 3, b = idx ? idx[t * 3 + 1] : t * 3 + 1, c = idx ? idx[t * 3 + 2] : t * 3 + 2;
+   const x = (pos[a * 3] + pos[b * 3] + pos[c * 3]) / 3, y = (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3, z = (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / 3;
+   per[classify(x, y, z)].push(a, b, c);
+  }
+  per.forEach((list, ci) => {
+   if (!list.length) return;
+   buckets[ci].push({ g: s.g, mat: s.mat, idx: list });
+   if (ci === 0 || ci >= 5) matTris.set(s.mat, (matTris.get(s.mat) || 0) + list.length / 3);
+  });
+ }
+ // Çok küçük parça (dağınık birkaç üçgen) kopmaya değmez: gövdeye kalır
+ for (let ci = 5; ci < CATS.length; ci++) {
+  if (buckets[ci].reduce((s, b) => s + b.idx.length / 3, 0) < 20) { buckets[0].push(...buckets[ci]); buckets[ci] = []; }
+ }
+
+ // --- Malzemeler: "tam metal" glTF varsayılanı ortam yansıması olmayan sahnede siyah görünür ---
+ const fixMat = m => {
+  if (!m || m.userData.autoFixed) return m;
+  m.userData.autoFixed = true;
+  if (m.metalness >= 0.99 && !m.metalnessMap) { m.metalness = 0.25; m.roughness = Math.min(m.roughness, 0.7); }
+  m.side = T.DoubleSide; // kesilen yüzeylerin arkası görünsün
+  return m;
+ };
+ let paintSrc = null, best = 0;
+ for (const [m, n] of matTris) if (m && n > best) { best = n; paintSrc = m; }
+ let paintMat = null;
+ if (paintSrc && !Array.isArray(paintSrc)) {
+  fixMat(paintSrc);
+  paintMat = paintSrc.clone();
+  paintMat.name = PAINT_MAT;
+  paintMat.userData.origMap = paintSrc.map || null;
+  paintMat.userData.origColor = paintSrc.color.clone();
+  if (paintSrc.map && paintSrc.map.image) paintMat.userData.grayMap = grayscaleTexture(paintSrc.map);
+ }
+
+ const root = new T.Group();
+ root.name = 'auto_split';
+ const makeNode = (ci) => {
+  const grp = new T.Group();
+  for (const b of buckets[ci]) {
+   const geo = new T.BufferGeometry();
+   for (const k in b.g.attributes) geo.setAttribute(k, b.g.attributes[k]);
+   geo.setIndex(b.idx);
+   geo.computeBoundingSphere();
+   let mat = fixMat(b.mat);
+   if (ci !== 0 && ci < 5) mat = b.mat;                 // tekerlek kendi malzemesinde kalır
+   else if (b.mat === paintSrc && paintMat) mat = paintMat;
+   grp.add(new T.Mesh(geo, mat));
+  }
+  return grp;
+ };
+ root.add(makeNode(0)).children[0].name = 'chassis';
+ const found = [];
+ if (wheels) wheels.forEach((w, i) => {
+  if (!buckets[1 + i].length) return;
+  const n = makeNode(1 + i);
+  n.name = `wheel_${i}`;
+  n.userData.wheelCenter = new T.Vector3((w.x0 + w.x1) / 2, lo.y + r, w.zc);
+  n.userData.wheelRadius = r;
+  root.add(n);
+ });
+ for (let ci = 5; ci < CATS.length; ci++) {
+  if (!buckets[ci].length) continue;
+  const n = makeNode(ci); n.name = CATS[ci]; root.add(n); found.push(CATS[ci]);
+ }
+ root.updateMatrixWorld(true);
+ console.info(`[özel araç] otomatik bölme: tekerlek ${wheels ? `4 (r=${r.toFixed(2)} m)` : 'bulunamadı'}, parçalar: ${found.join(', ') || 'yok'}`);
+ return { root, wheels: !!wheels, parts: found };
+}
+
+// Dokunun gri (parlaklığı normalize) kopyası: boya rengi bununla çarpılınca dokudaki detay korunur
+function grayscaleTexture(tex) {
+ try {
+  const img = tex.image, w = img.width, h = img.height;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d');
+  cx.drawImage(img, 0, 0);
+  const d = cx.getImageData(0, 0, w, h), p = d.data;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < p.length; i += 4) hist[(p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114) | 0]++;
+  let acc = 0, p95 = 255;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= 0.95 * (p.length / 4)) { p95 = Math.max(v, 1); break; } }
+  for (let i = 0; i < p.length; i += 4) {
+   const g = Math.min(1, (p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114) / p95) * 0.85 + 0.1;
+   p[i] = p[i + 1] = p[i + 2] = Math.round(g * 255);
+  }
+  cx.putImageData(d, 0, 0);
+  const t = new T.CanvasTexture(cv);
+  t.flipY = tex.flipY; t.wrapS = tex.wrapS; t.wrapT = tex.wrapT; t.colorSpace = tex.colorSpace;
+  t.channel = tex.channel; t.anisotropy = tex.anisotropy;
+  return t;
+ } catch (e) { console.warn('[özel araç] gri doku oluşturulamadı:', e); return null; }
+}
+
 function applyCustomCarModel(model, name) {
  clearCustomCar();
+ // Ölçek: 2.5–8 m boyundaki modeller metre kabul edilir; diğerleri varsayılan araç boyuna (4.3 m) getirilir
+ const box = new T.Box3().setFromObject(model);
+ const size = box.getSize(new T.Vector3());
+ const scale = (size.z >= 2.5 && size.z <= 8) ? 1 : CUSTOM_CAR_LENGTH / size.z;
+ model.scale.setScalar(scale);
+ model.updateMatrixWorld(true);
+
+ // Tekerleği ve parçası ayrılmamış (tek parça) model: oyun kendisi böler
+ let named = false;
+ model.traverse(o => { if (/^(wheel|part)_/.test(o.name)) named = true; });
+ const auto = named ? null : autoSplitCar(model);
+ if (auto) model = auto.root;
+
  let hasPaint = false;
  const parts = [], wheels = [], anchors = {};
  model.traverse(o => {
@@ -5138,13 +5340,6 @@ function applyCustomCarModel(model, name) {
  });
  const useWheels = wheels.length === 4;
 
- // Ölçek: 2.5–8 m boyundaki modeller metre kabul edilir; diğerleri varsayılan araç boyuna (4.3 m) getirilir
- const box = new T.Box3().setFromObject(model);
- const size = box.getSize(new T.Vector3());
- const scale = (size.z >= 2.5 && size.z <= 8) ? 1 : CUSTOM_CAR_LENGTH / size.z;
- model.scale.setScalar(scale);
- model.updateMatrixWorld(true);
-
  const wrapper = new T.Group();
  wrapper.name = 'custom_car';
  wrapper.add(model);
@@ -5152,6 +5347,7 @@ function applyCustomCarModel(model, name) {
  if (useWheels) {
   // Tekerlekler gövdeden ayrılıp fizik tekerleklerine bağlanır; fizik de modelin tekerlek yerine ve boyuna uyar
   const info = wheels.map(w => {
+   if (w.userData.wheelCenter) return { obj: w, c: w.userData.wheelCenter.clone(), r: w.userData.wheelRadius };
    const wb = new T.Box3().setFromObject(w);
    return { obj: w, c: wb.getCenter(new T.Vector3()), r: (wb.max.y - wb.min.y) / 2 };
   });
@@ -5214,6 +5410,7 @@ function applyCustomCarModel(model, name) {
  try { renderer.compileAsync(scene, camera); } catch (e) {}
 
  const report = [
+  ...(auto ? ['otomatik bölündü'] : []),
   `tekerlek ${useWheels ? '✓' : '✗'}`,
   `parça ${parts.length}/5`,
   `boya ${hasPaint ? '✓' : '✗'}`,

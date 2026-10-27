@@ -62,6 +62,7 @@ Durum işaretleri: `[x]` tamamlandı · `[~]` ham olarak eklendi, cilalanacak ·
 - [x] Tampon kitlerinin etkisi yoktu (kimlik uyuşmazlığı) → `BUMPER_FX`
 - [x] Boya ve rakip renkleri uygulanmıyordu → malzeme adına göre boyama
 - [~] Deneme aracı: Garaj > Gövde & Jantlar > **Araç dosyası seç** (ya da .glb'yi oyun ekranına sürükle) ile oyuncu aracı olur, seçim hatırlanır; "Varsayılan araç" ile geri dönülür. Sunucuyla açılınca `?car=<ad>` da çalışır (boy 4.3 m'ye ölçeklenir, zemine oturur, roket kovanı tavana yerleşir). Tek parça modelde parça kopması ve boya yok, tekerlekler dönmez.
+- [~] **Otomatik bölme:** tek parça araç yüklenince tekerlekler, kopabilir parçalar ve boya oyun tarafından otomatik oluşturulur
 - [~] **Araç kuralları** (`docs/ARAC_KURALLARI.md`): `wheel_*` (4 tekerlek, fizik modelin tekerlek yerine/boyuna uyar), `part_*`, `T_Govde`, `anchor_*`. Kontrol programı `tools/arac_kontrol.py`. Devir notu `docs/DEVIR_NOTU.md`.
 - [x] Parça göstergesinde SOL/SAĞ ters yazıyordu (`part_armor_l` aracın sağ yanında) → etiketler düzeltildi
 

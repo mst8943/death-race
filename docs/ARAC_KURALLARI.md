@@ -1,8 +1,28 @@
 # Araç Modeli Kuralları
 
-Bu kurallara uyan her `.glb` araç oyuna takıldığında tekerlekleri döner, parçaları kopar, garaj boyası işler. Kod değişikliği gerekmez. Kurallar bir kez yazıldı; her yeni araç için aynısı geçerli.
+## En kısa yol: tam aracı ver, oyun kendisi böler
+Aracın tek parça hâlini (tekerlekleri, zırhı, her şeyi gövdeye yapışık) olduğu gibi yükle: Garaj (**G**) > **⚙️ GÖVDE & JANTLAR** > **ARAÇ DOSYASI SEÇ**. Oyun yükleme anında aracı kendisi böler:
 
-Model kuralların ne kadarına uyuyorsa oyun o kadar özelliği açar. Hiçbirine uymayan tek parça bir model de oyunda çalışır, ama "çıplak" kalır.
+| Ne yapar | Nasıl |
+|---|---|
+| Boyu ayarlar | Model metre değilse 4.3 m boya getirir, zemine oturtur |
+| **4 tekerleği bulur ve ayırır** | Zemine değen dört köşe lastiktir; tekerleğin yarıçapını lastiğin şeklinden ölçer. Tekerlekler döner, direksiyonla döner; sürüş fiziği tekerleklerin yerine ve boyuna uyar. |
+| **Kopabilir parçaları keser** | Ön (koçbaşı/mahmuz), arka (kalkan), tavan ve iki yan bölge ayrı parça olur, darbe yönüne göre kopar |
+| **Boyanabilir yapar** | Gövdenin ana malzemesi `T_Govde` olur. Varsayılan boyada (Ölüm Meleği) aracın kendi rengi/dokusu görünür; diğer boyalarda doku griye çevrilip boyanır, detaylar korunur |
+| Görünümü düzeltir | "Tam metal" gelen malzemeleri (karanlıkta siyah görünür) normal metale çevirir |
+| Roket kovanını yerleştirir | Tavanın üstüne oturtur |
+
+Garajdaki "Takılı:" satırında "otomatik bölündü" ve neyin bulunduğu yazar.
+
+**Otomatik bölmenin sınırları:** kesim bölgelere göre yapılır, modelin gerçek parça sınırlarını bilmez. Kopan parçanın kenarları düzensiz, altında delik görünebilir; parça bir bölgeye sığmıyorsa yarısı gövdede kalır. Daha temiz sonuç istenirse aşağıdaki kurallarla model Blender'da elle bölünür; model `wheel_` ya da `part_` adlı bir nesne içeriyorsa oyun otomatik bölmeyi **yapmaz**, modeldeki bölmeyi kullanır.
+
+Otomatik bölmenin çalışması için tek şart: araç **önü +Z (Blender'da −Y), tekerlekleri yere değecek** şekilde dışa aktarılmış olsun. İnternetten ve yapay zekâ araçlarından gelen modellerin çoğu zaten böyledir.
+
+---
+
+# Elle bölme kuralları (daha temiz sonuç için)
+
+Bu kurallara uyan her `.glb` araç oyuna takıldığında tekerlekleri döner, parçaları kopar, garaj boyası işler. Model kuralların ne kadarına uyuyorsa oyun o kadar özelliği modelden alır.
 
 ## Özet
 
@@ -10,7 +30,7 @@ Model kuralların ne kadarına uyuyorsa oyun o kadar özelliği açar. Hiçbirin
 |---|---|---|
 | Ölçek | 1 birim = 1 metre, araç boyu 2.5–8 m | Araç 4.3 m boya büyütülür ya da küçültülür |
 | Yön | Blender'da önü **−Y**, üstü **+Z** | Araç yan ya da ters gider |
-| Tekerlek dönmesi ve direksiyon | 4 ayrı nesne, adları `wheel_` ile başlar | Tekerlekler gövdeye gömülü kalır, dönmez |
+| Tekerlek dönmesi ve direksiyon | 4 ayrı nesne, adları `wheel_` ile başlar | Hiç `wheel_`/`part_` yoksa oyun otomatik böler |
 | Parça kopması | `part_spikes`, `part_armor_l`, `part_armor_r`, `part_roof`, `part_tombstone` | O parça kopmaz, alttaki parça göstergesinde görünmez |
 | Garaj boyası, rakip renkleri | Ana boya malzemesinin adı `T_Govde` (koyu ton için `GovdeKoyu`) | Boya işlemez, araç dokusundaki renkle kalır |
 | Silah yerleri (isteğe bağlı) | Boş nesneler: `anchor_gun_l`, `anchor_gun_r`, `anchor_rocket` | Minigunlar varsayılan yerde, roket kovanı tavana otomatik oturur |
@@ -78,8 +98,8 @@ Dosyayı `araclar/` klasörüne koy.
    Program neyin tanındığını (tekerlek, parça, boya, silah yeri) ve neyin eksik olduğunu yazar. "HATA" satırları düzeltilmelidir; "UYARI" satırları özelliği kapatır ama aracı bozmaz.
 2. Oyunda dene: Garaj (**G**) > **⚙️ GÖVDE & JANTLAR** > **ARAÇ DOSYASI SEÇ**. Dosyayı oyun ekranına sürükleyip bırakmak da olur. Üstte çıkan duyuru ve garajdaki "Takılı:" satırı, oyunun neyi tanıdığını gösterir.
 
-## 8. Hazır (tek parça) bir modeli kurallara uydurmak
-İnternetten ya da yapay zekâ aracından gelen modeller genelde tek parça olur (`demo_car.glb` gibi). Bunları Blender'da kurallara uydurmak için:
+## 8. Hazır (tek parça) bir modeli elle kurallara uydurmak
+Otomatik bölme yeterli değilse (parça sınırları önemliyse) tek parça modeli Blender'da elle bölmek için:
 
 1. `File > Import > glTF 2.0` ile modeli aç.
 2. **Ölçek ve yön:**
@@ -110,4 +130,4 @@ Dosyayı `araclar/` klasörüne koy.
 Gemini'ye Blender betiği yazdırırken `blender/GEMINI_PROMPT.md` dosyasını ve bu dosyayı birlikte ver. Betiğin sonunda Bölüm 7'deki kontrollerin `assert` ile yapılmasını iste.
 
 ---
-*Teknik not:* Oyundaki karşılığı `js/game.js` içindeki `applyCustomCarModel()` fonksiyonudur. Kontrol programı `tools/arac_kontrol.py`. Kurallar değişirse ikisi ve bu dosya birlikte güncellenir.
+*Teknik not:* Oyundaki karşılığı `js/game.js` içindeki `applyCustomCarModel()` (kurallar) ve `autoSplitCar()` (otomatik bölme) fonksiyonlarıdır. Kontrol programı `tools/arac_kontrol.py`. Kurallar değişirse ikisi ve bu dosya birlikte güncellenir.

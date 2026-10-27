@@ -95,15 +95,16 @@ Ayrıntılı durum listesi `YOL_HARITASI.md` içinde, teknik günlük `memory/de
 - **Araç takma sistemi:**
   - Garajdan `.glb` seçilir ya da dosya oyun ekranına sürüklenir.
   - Seçim IndexedDB'de hatırlanır.
-  - Model `docs/ARAC_KURALLARI.md` kurallarının ne kadarına uyuyorsa o kadar özellik açılır: tekerlek dönmesi ve fiziğin tekerleklere uyması, parça kopması, boya, silah yerleri.
-  - Kurallara uyan bir modelle (ayrı tekerlekli) ve tek parça `demo_car` ile test edildi.
+  - **Tek parça model otomatik bölünür** (`autoSplitCar()`): 4 tekerlek zemine değen köşelerden bulunup ayrılır, ön/arka/tavan/yanlar kopabilir parça olur, ana malzeme boyanabilir `T_Govde` olur (varsayılan boyada aracın kendi dokusu görünür).
+  - Elle bölünmüş model (`wheel_*`, `part_*` adları) varsa otomatik bölme yapılmaz; `docs/ARAC_KURALLARI.md` kuralları uygulanır.
+  - Kurallara uyan bir modelle (ayrı tekerlekli) ve tek parça `demo_car` ile (otomatik bölme) test edildi.
 
 ---
 
 ## 4. Yapılacaklar (öncelik sırasıyla)
 
 ### Hemen sırada
-1. **`demo_car`'ı kurallara uydurmak:** Blender'da tekerlekleri ayırmak, parçalara ad vermek, `T_Govde` atamak. Adımlar `docs/ARAC_KURALLARI.md` Bölüm 8'de. Bunu kullanıcı yapacak ya da bir yapay zekâya Blender betiği yazdıracak.
+1. **Otomatik bölmeyi başka modellerle denemek:** farklı biçimli araçlarda (çok geniş tekerlekli, tekerleği kasanın içinde kalan) bölge sınırları ayar isteyebilir. Kesilen parçaların altına kapama yüzeyi eklenmesi ve üçgen sayısını otomatik azaltma henüz yok.
 2. **Tur C — çoklu araç:**
    - Garajda araç seçimi.
    - Her aracın kendi ayarları: ağırlık, motor gücü, azami hız, zırh. Tekerlek yeri ve boyu modelden ölçülüyor (bu kısım hazır).
@@ -147,7 +148,8 @@ Bölünmüş ekran, anlık tekrar, çevrimiçi skor tablosu.
 - **Boya malzeme adıyla bulunur:** GLTFLoader çok malzemeli nesneleri `Cube_1`, `Cube_2` diye böler, bu yüzden nesne adına güvenilmez.
 - **Işık havuzu:** sahneye doğrudan yeni ışık ekleme; havuzdaki sanal ışıkları kullan. Yoksa shader'lar yeniden derlenir ve oyun takılır.
 - **`file://` sınırı:** dosyaya çift tıklanarak açılan oyunda `fetch` ile yerel dosya okunamaz. Yeni dosya yükleme özelliklerinde garajdaki dosya seçici gibi bir yol düşünülmeli.
-- **Tek parça araçlarda:** jant bıçakları ve tekerlek aksesuarları gizlenir. Ayrı tekerlekli araçlarda bıçaklar varsayılan tekerlek boyunda kalır.
+- **Tekerleği bulunamayan araçlarda** (ör. tekerlekleri yere değmiyorsa) tekerlekler gövdede kalır, fizik tekerlekleri gizlenir; jant bıçakları da gizlenir. Ayrı tekerlekli araçlarda bıçaklar varsayılan tekerlek boyunda kalır.
+- **Otomatik bölme bölgeseldir:** parça sınırlarını bilmez, kesik kenarlar düzensizdir. Temiz sonuç için elle bölme (`docs/ARAC_KURALLARI.md`).
 - `game.js` büyük ve tek dosya. Bölmek (ES modülleri) platform paketlemesiyle birlikte düşünülebilir; şimdilik bilerek tek dosya.
 
 ---

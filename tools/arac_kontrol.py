@@ -125,7 +125,7 @@ def main(path):
     if 2.5 <= size[2] <= 8:
         print('Ölçek: metre kabul edilir (oyun büyütmez/küçültmez)')
     else:
-        warnings.append(f'Boy {size[2]:.2f}: 2.5–8 m dışında, oyun aracı 4.3 m boya ölçekler. 1 birim = 1 metre olmalı.')
+        warnings.append(f'Boy {size[2]:.2f}: 2.5–8 m dışında, oyun aracı 4.3 m boya ölçekler (gerçek boyu farklıysa 1 birim = 1 metre olarak dışa aktar).')
     if size[0] > size[2]:
         errors.append('Araç X ekseninde Z ekseninden uzun: önü +Z (Blender\'da −Y) yönüne bakmıyor olabilir.')
     if size[0] > 2.6:
@@ -136,6 +136,7 @@ def main(path):
     parts = [p for p in PARTS if p in names]
     anchors = [a for a in ANCHORS if a in names]
     mat_names = [materials[m].get('name', '') for m in used_mats]
+    auto = not any(n.startswith(('wheel_', 'part_')) for n in names)
 
     # Tekerlekler
     if len(wheels) == 4:
@@ -158,15 +159,21 @@ def main(path):
     elif wheels:
         errors.append(f'{len(wheels)} tekerlek bulundu ({", ".join(wheels)}); tam 4 olmalı.')
     else:
-        warnings.append('wheel_* yok: tekerlekler gövdeye gömülü sayılır, dönmez ve direksiyonla dönmez.')
+        if not any(n.startswith('part_') for n in names):
+            print('Tekerlek: ayrı değil → oyun aracı yüklerken OTOMATİK BÖLECEK (tekerlek, parça, boya)')
+        else:
+            warnings.append('wheel_* yok ama part_* var: elle bölünmüş sayılır, otomatik bölme yapılmaz; tekerlekler dönmez.')
 
-    print(f'Kopabilir parçalar: {len(parts)}/5 {", ".join(parts) or "-"}')
-    for p in PARTS:
-        if p not in parts:
-            print(f'   eksik: {p} (bu parça kopmaz, HUD\'da görünmez)')
-    print(f'Boya: {"T_Govde ✓" if "T_Govde" in mat_names else "✗ (garaj boyası işlemez)"}'
-          f'{" · GovdeKoyu ✓" if "GovdeKoyu" in mat_names else ""}')
-    if 'T_Govde' not in mat_names:
+    if auto:
+        print('Parçalar ve boya: oyun otomatik bölerken oluşturacak')
+    else:
+        print(f'Kopabilir parçalar: {len(parts)}/5 {", ".join(parts) or "-"}')
+        for p in PARTS:
+            if p not in parts:
+                print(f'   eksik: {p} (bu parça kopmaz, HUD\'da görünmez)')
+        print(f'Boya: {"T_Govde ✓" if "T_Govde" in mat_names else "✗ (garaj boyası işlemez)"}'
+              f'{" · GovdeKoyu ✓" if "GovdeKoyu" in mat_names else ""}')
+    if 'T_Govde' not in mat_names and any(n.startswith(('wheel_', 'part_')) for n in names):
         warnings.append('T_Govde malzemesi yok: garajdaki boya ve rakip renkleri işlemez.')
     print(f'Silah yerleri: {len(anchors)}/3 {", ".join(anchors) or "- (oyun varsayılan yerleri kullanır)"}')
 
@@ -181,7 +188,7 @@ def main(path):
     print(f'Malzeme: {len(used_mats)} ({", ".join(mat_names) or "adsız"})')
     if len(used_mats) > MAX_MATERIALS:
         warnings.append(f'{len(used_mats)} malzeme: en fazla {MAX_MATERIALS}.')
-    if any(not n for n in mat_names):
+    if any(not n for n in mat_names) and not auto:
         warnings.append('Adsız malzeme var: boya/far gibi özellikler malzeme adıyla bulunur.')
     for i, img in enumerate(gltf.get('images', [])):
         bv = gltf['bufferViews'][img['bufferView']] if 'bufferView' in img else None
