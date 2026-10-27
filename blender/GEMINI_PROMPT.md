@@ -23,7 +23,7 @@ Sen deneyimli bir Blender Python (bpy) teknik sanatçısısın. Tarayıcıda ça
 - **Tamamen özgün tasarım.** Gerçek marka, logo, plaka ya da filmdeki aracın birebir kopyası olmayacak.
 
 ### 2. Koordinat sistemi ve ölçüler (DEĞİŞTİRME)
-- Blender'da Z yukarı, aracın **önü −Y**, arkası +Y, **solu −X**, sağı +X. 1 birim = 1 metre.
+- Blender'da Z yukarı, aracın **önü −Y**, arkası +Y. 1 birim = 1 metre. Dikkat: önü −Y'ye bakan araçta **−X aracın sağ yanıdır**; parça adları (`_l` = −X) tarihsel olarak böyle kaldı, adlara değil koordinatlara uy.
 - GLB dışa aktarımı `export_yup=True` ile yapılacak. Oyunda +Z ileri olur; bu yüzden yön kuralına mutlaka uy.
 - Gövde zarfı (tekerlekler hariç): X −1.00…+1.00, Y −2.30…+2.05, Z 0.40…1.45 içinde kalmalı. Oyunun çarpışma kutusu buna göre ayarlı.
 - Tekerlek merkezleri sabit: (±1.00, −1.45, 0.38) ön, (±1.00, +1.45, 0.38) arka. Gövde/çamurluk tekerleklerin dönüşüne yer bırakmalı.
@@ -40,8 +40,8 @@ Sen deneyimli bir Blender Python (bpy) teknik sanatçısısın. Tarayıcıda ça
 |---|---|---|
 | `chassis` | Ana gövde, kabin, kaput, çamurluklar, tamponlar, farlar, stoplar, egzozlar | Hiç kopmaz |
 | `part_spikes` | Ön koçbaşı bıçakları ve mahmuzlar | Önden darbede kopar |
-| `part_armor_l` | Sol (−X) kapı zırh plakası | Soldan darbede kopar |
-| `part_armor_r` | Sağ (+X) kapı zırh plakası | Sağdan darbede kopar |
+| `part_armor_l` | −X yanındaki kapı zırh plakası | −X yanından darbede kopar |
+| `part_armor_r` | +X yanındaki kapı zırh plakası | +X yanından darbede kopar |
 | `part_roof` | Tavan roll-cage ve projektör barı | Üstten darbede kopar |
 | `part_tombstone` | Arka kalın çelik kalkan | Arkadan darbede kopar |
 

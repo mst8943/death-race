@@ -3573,8 +3573,8 @@ const debrisList = [];
 
 const MODULAR_PARTS = {
  'part_spikes': { name: 'Ön Mahmuzlar', mass: 35, impulse: new CANNON.Vec3(0, 2.5, 7.0), hpThreshold: 80 },
- 'part_armor_l': { name: 'Sol Zırh Plakası', mass: 25, impulse: new CANNON.Vec3(-6.0, 2.0, 0), hpThreshold: 60 },
- 'part_armor_r': { name: 'Sağ Zırh Plakası', mass: 25, impulse: new CANNON.Vec3(6.0, 2.0, 0), hpThreshold: 45 },
+ 'part_armor_l': { name: 'Sağ Zırh Plakası', mass: 25, impulse: new CANNON.Vec3(-6.0, 2.0, 0), hpThreshold: 60 },
+ 'part_armor_r': { name: 'Sol Zırh Plakası', mass: 25, impulse: new CANNON.Vec3(6.0, 2.0, 0), hpThreshold: 45 },
  'part_roof': { name: 'Tavan Projektörleri', mass: 20, impulse: new CANNON.Vec3(0, 5.0, -1.0), hpThreshold: 30 },
  'part_tombstone': { name: 'Tombstone Kalkanı', mass: 160, impulse: new CANNON.Vec3(0, 1.8, -9.0), hpThreshold: 15 },
 };
@@ -5084,59 +5084,157 @@ function customCarDB(mode, fn) {
  });
 }
 
-function updateCustomCarUI(name) {
+function updateCustomCarUI(name, report = '') {
  const el = document.getElementById('custom-car-status');
- if (el) el.textContent = name ? `Takılı: ${name}` : 'Takılı: varsayılan araç';
+ if (el) el.textContent = name ? `Takılı: ${name} (${report})` : 'Takılı: varsayılan araç';
  const def = document.getElementById('carfile-default');
  if (def) def.classList.toggle('active', !name);
 }
 
+// Araç sözleşmesi (docs/ARAC_KURALLARI.md): wheel_* tekerlekler, part_* kopabilir parçalar,
+// T_Govde/GovdeKoyu boya, anchor_* silah yerleri. Model ne kadarına uyuyorsa o kadar özellik açılır.
+const DEFAULT_WHEEL_CENTER_Y = BODY_Y_OFFSET + wheelOptions.radius; // varsayılan aracın tekerlek merkezi (araç yerelinde)
+const DEFAULT_WHEEL_POS = wheelPositions.map(p => p.slice());
+const DEFAULT_GUN_POS = [leftGun.root.position.clone(), rightGun.root.position.clone()];
+let customWheels = [];
+
+function setPhysicsWheels(list) { // list: [{x, z, r}] fizik tekerleği sırasıyla; null → varsayılan
+ vehicle.wheelInfos.forEach((w, i) => {
+  const d = DEFAULT_WHEEL_POS[i];
+  const c = list ? list[i] : { x: d[0], z: d[2], r: wheelOptions.radius };
+  w.chassisConnectionPointLocal.set(c.x, d[1], c.z);
+  w.radius = c.r;
+ });
+}
+
+function showDefaultWheels(show) {
+ for (const wm of wheelMeshes) for (const c of wm.children) if (c.userData.defaultWheel) c.visible = show;
+}
+
+function clearCustomCar() {
+ detachedParts.clear(); // araç değişince kopmuş parça kaydı yeni araca taşınmaz
+ for (const w of customWheels) w.parent && w.parent.remove(w);
+ customWheels = [];
+ for (const wm of wheelMeshes) wm.visible = true;
+ showDefaultWheels(true);
+ setPhysicsWheels(null);
+ leftGun.root.position.copy(DEFAULT_GUN_POS[0]);
+ rightGun.root.position.copy(DEFAULT_GUN_POS[1]);
+ if (defaultPodY !== null) rocketPod.position.y = defaultPodY;
+}
+
 function applyCustomCarModel(model, name) {
- let hasParts = false, hasPaint = false;
+ clearCustomCar();
+ let hasPaint = false;
+ const parts = [], wheels = [], anchors = {};
  model.traverse(o => {
-  if (o.name && o.name.startsWith('part_')) hasParts = true;
+  if (/^part_/.test(o.name)) parts.push(o.name);
+  if (/^wheel_/.test(o.name)) wheels.push(o);
+  if (/^anchor_/.test(o.name)) anchors[o.name] = o;
   if (!o.isMesh) return;
   if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
   if (o.material && o.material.name === PAINT_MAT) hasPaint = true;
   o.castShadow = true; o.receiveShadow = true;
  });
- // Ölçek ve yerleşim: Z ileri kabul edilir, araç boyu varsayılan araca eşitlenir
+ const useWheels = wheels.length === 4;
+
+ // Ölçek: 2.5–8 m boyundaki modeller metre kabul edilir; diğerleri varsayılan araç boyuna (4.3 m) getirilir
  const box = new T.Box3().setFromObject(model);
  const size = box.getSize(new T.Vector3());
- const scale = CUSTOM_CAR_LENGTH / size.z;
+ const scale = (size.z >= 2.5 && size.z <= 8) ? 1 : CUSTOM_CAR_LENGTH / size.z;
  model.scale.setScalar(scale);
- const center = box.getCenter(new T.Vector3());
- model.position.set(-center.x * scale, CHASSIS_GROUND_LOCAL_Y - box.min.y * scale, -center.z * scale);
+ model.updateMatrixWorld(true);
+
  const wrapper = new T.Group();
  wrapper.name = 'custom_car';
  wrapper.add(model);
+ const physWheels = [];
+ if (useWheels) {
+  // Tekerlekler gövdeden ayrılıp fizik tekerleklerine bağlanır; fizik de modelin tekerlek yerine ve boyuna uyar
+  const info = wheels.map(w => {
+   const wb = new T.Box3().setFromObject(w);
+   return { obj: w, c: wb.getCenter(new T.Vector3()), r: (wb.max.y - wb.min.y) / 2 };
+  });
+  const midX = info.reduce((s, w) => s + w.c.x, 0) / 4, midZ = info.reduce((s, w) => s + w.c.z, 0) / 4;
+  const wheelY = info.reduce((s, w) => s + w.c.y, 0) / 4;
+  model.position.set(-midX, DEFAULT_WHEEL_CENTER_Y - wheelY, -midZ);
+  for (let i = 0; i < 4; i++) {
+   const d = DEFAULT_WHEEL_POS[i]; // fizik sırası: işaretlere göre eşleştir (x ve z yönü aynı olan tekerlek)
+   const w = info.find(t => Math.sign(t.c.x - midX) === Math.sign(d[0]) && Math.sign(t.c.z - midZ) === Math.sign(d[2]));
+   if (!w) continue;
+   physWheels[i] = { x: w.c.x - midX, z: w.c.z - midZ, r: w.r };
+   // Tekerlek merkezde dönecek şekilde taşınır (model ölçeği korunur)
+   const pivot = new T.Group();
+   const m = w.obj.matrixWorld.clone();
+   w.obj.parent.remove(w.obj);
+   m.premultiply(new T.Matrix4().makeTranslation(-w.c.x, -w.c.y, -w.c.z));
+   m.decompose(w.obj.position, w.obj.quaternion, w.obj.scale);
+   pivot.add(w.obj);
+   wheelMeshes[i].add(pivot);
+   customWheels.push(pivot);
+  }
+ } else {
+  const center = box.getCenter(new T.Vector3());
+  model.position.set(-center.x * scale, CHASSIS_GROUND_LOCAL_Y - box.min.y * scale, -center.z * scale);
+ }
+
  if (defaultBodyMesh === null) { defaultBodyMesh = carBodyMesh; defaultPodY = rocketPod.position.y; }
  if (carBodyMesh) carGroup.remove(carBodyMesh);
  carBodyMesh = wrapper;
  carGroup.add(wrapper);
- // Tek parça modellerde tekerlekler gövdeye gömülü: fiziğin ayrı tekerleklerini gizle
- for (const w of wheelMeshes) w.visible = false;
- // Roket kovanını modelin tavanına oturt (yukarıdan aşağı ışın)
  carGroup.updateMatrixWorld(true);
- const podLocal = rocketPod.position;
- const ray = new T.Raycaster(carGroup.localToWorld(new T.Vector3(podLocal.x, 5, podLocal.z)), new T.Vector3(0, -1, 0).applyQuaternion(carGroup.quaternion));
- const hit = ray.intersectObject(wrapper, true)[0];
- rocketPod.position.y = hit ? carGroup.worldToLocal(hit.point.clone()).y + 0.11 : defaultPodY; // 0.11: kovan kutusunun yarı yüksekliği
+
+ if (physWheels.filter(Boolean).length === 4) {
+  setPhysicsWheels(physWheels);
+  showDefaultWheels(false);
+ } else {
+  // Tek parça modellerde tekerlekler gövdeye gömülü: fiziğin ayrı tekerleklerini gizle
+  for (const wm of wheelMeshes) wm.visible = false;
+ }
+
+ // Silah yerleri: anchor_* varsa oraya, yoksa roket kovanı tavana oturtulur
+ const toCar = o => carGroup.worldToLocal(o.getWorldPosition(new T.Vector3()));
+ if (anchors.anchor_gun_l) leftGun.root.position.copy(toCar(anchors.anchor_gun_l));
+ if (anchors.anchor_gun_r) rightGun.root.position.copy(toCar(anchors.anchor_gun_r));
+ if (anchors.anchor_rocket) {
+  rocketPod.position.copy(toCar(anchors.anchor_rocket));
+ } else {
+  const podLocal = rocketPod.position;
+  const ray = new T.Raycaster(carGroup.localToWorld(new T.Vector3(podLocal.x, 5, podLocal.z)), new T.Vector3(0, -1, 0).applyQuaternion(carGroup.quaternion));
+  const hit = ray.intersectObject(wrapper, true)[0];
+  if (hit) rocketPod.position.y = carGroup.worldToLocal(hit.point.clone()).y + 0.11; // 0.11: kovan kutusunun yarı yüksekliği
+ }
+
+ // Kayıtlı boya yeni modele uygulanır
+ if (hasPaint && CAR_SKINS[currentSkin]) {
+  const sk = CAR_SKINS[currentSkin];
+  paintCarBody(wrapper, sk.bodyColor, sk.metalness, sk.roughness);
+ }
+ updatePartsHUD();
  try { renderer.compileAsync(scene, camera); } catch (e) {}
- console.info(`[özel araç] ${name}: ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)} → x${scale.toFixed(2)}, parçalar: ${hasParts ? 'var' : 'yok'}, boya: ${hasPaint ? 'var' : 'yok'}`);
- updateCustomCarUI(name);
- showBanner(`🚗 DENEME ARACI: ${name.toUpperCase()}${hasParts ? '' : ' · PARÇA KOPMASI KAPALI'}`, 'buff-shield');
+
+ const report = [
+  `tekerlek ${useWheels ? '✓' : '✗'}`,
+  `parça ${parts.length}/5`,
+  `boya ${hasPaint ? '✓' : '✗'}`,
+  `silah yeri ${Object.keys(anchors).length}/3`,
+ ].join(' · ');
+ console.info(`[özel araç] ${name}: ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)} m, ölçek x${scale.toFixed(2)}, ${report}`);
+ if (wheels.length && !useWheels) console.warn(`[özel araç] ${wheels.length} tekerlek bulundu, 4 olmalı (wheel_*)`);
+ updateCustomCarUI(name, report);
+ showBanner(`🚗 DENEME ARACI: ${name.toUpperCase()} · ${report.toUpperCase()}`, 'buff-shield');
 }
 
 function restoreDefaultCar() {
  customCarDB('readwrite', st => st.delete('car'));
  if (defaultBodyMesh) {
+  clearCustomCar();
   carGroup.remove(carBodyMesh);
   carBodyMesh = defaultBodyMesh;
+  carBodyMesh.traverse(o => { if (/^part_/.test(o.name)) o.visible = true; });
   carGroup.add(carBodyMesh);
-  rocketPod.position.y = defaultPodY;
   defaultBodyMesh = null;
-  for (const w of wheelMeshes) w.visible = true;
+  updatePartsHUD();
   showBanner('🚗 VARSAYILAN ARAÇ TAKILDI', 'buff-shield');
  }
  updateCustomCarUI(null);
@@ -5231,7 +5329,7 @@ loadGLTFModel('wheel').then(wheelModel => {
  const wheelBox = new T.Box3().setFromObject(wheelModel);
  const modelRadius = (wheelBox.max.y - wheelBox.min.y) / 2;
  if (modelRadius > 0.01) wheelModel.scale.setScalar(wheelOptions.radius / modelRadius);
- for (let i = 0; i < 4; i++) wheelMeshes[i].add(wheelModel.clone(true));
+ for (let i = 0; i < 4; i++) { const w = wheelModel.clone(true); w.userData.defaultWheel = true; wheelMeshes[i].add(w); }
  for (let ai of aiOpponents) {
   for (let i = 0; i < 4; i++) ai.wheelMeshes[i].add(wheelModel.clone(true));
  }
@@ -5239,7 +5337,7 @@ loadGLTFModel('wheel').then(wheelModel => {
  const wheelGeo = new T.CylinderGeometry(wheelOptions.radius, wheelOptions.radius, 0.3, 20);
  wheelGeo.rotateZ(Math.PI / 2);
  const wheelMeshMat = new T.MeshStandardMaterial({ color: '#111', roughness: 0.8 });
- for (let i = 0; i < 4; i++) wheelMeshes[i].add(new T.Mesh(wheelGeo, wheelMeshMat));
+ for (let i = 0; i < 4; i++) { const w = new T.Mesh(wheelGeo, wheelMeshMat); w.userData.defaultWheel = true; wheelMeshes[i].add(w); }
  for (let ai of aiOpponents) {
   for (let i = 0; i < 4; i++) ai.wheelMeshes[i].add(new T.Mesh(wheelGeo, wheelMeshMat));
  }
@@ -8731,12 +8829,13 @@ window.pauseAction = pauseAction;
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
 
 /* ---------- Araç parça durumu göstergesi ---------- */
-const PART_HUD = [['part_spikes', 'ÖN'], ['part_armor_l', 'SOL'], ['part_armor_r', 'SAĞ'], ['part_roof', 'TAVAN'], ['part_tombstone', 'ARKA']];
+// Not: part_armor_l −X tarafında; takip kamerasından bakınca −X aracın SAĞ yanı (adlar eski, kimlikler değişmedi)
+const PART_HUD = [['part_spikes', 'ÖN'], ['part_armor_r', 'SOL'], ['part_armor_l', 'SAĞ'], ['part_roof', 'TAVAN'], ['part_tombstone', 'ARKA']];
 function updatePartsHUD() {
  const el = document.getElementById('parts-hud');
  if (!el) return;
  // Sabit etiketler (kullanıcı girdisi yok) — innerHTML güvenli
- el.innerHTML = PART_HUD.map(([k, label]) => `<span class="part-chip${detachedParts.has(k) ? ' lost' : ''}">${label}</span>`).join('') +
+ el.innerHTML = PART_HUD.filter(([k]) => !carBodyMesh || carGroup.getObjectByName(k)).map(([k, label]) => `<span class="part-chip${detachedParts.has(k) ? ' lost' : ''}">${label}</span>`).join('') +
   `<span id="parts-effect">${partsEffectText()}</span>`;
 }
 function partsEffectText() {
